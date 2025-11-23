@@ -1,10 +1,12 @@
 import axios from 'axios';
+import { getOrCreateAthlete, updateAthleteTokens } from './supabase';
 
 const STRAVA_BASE_URL = 'https://www.strava.com';
 const STORAGE_KEYS = {
   ACCESS_TOKEN: 'strava_access_token',
   REFRESH_TOKEN: 'strava_refresh_token',
   ACTIVITIES: 'strava_activities',
+  STRAVA_ATHLETE_ID: 'strava_athlete_id',
 };
 
 /**
@@ -21,7 +23,7 @@ export const exchangeCodeForToken = async (code) => {
       grant_type: 'authorization_code',
     });
 
-    const { access_token, refresh_token } = response.data;
+    const { access_token, refresh_token, athlete, expires_at } = response.data;
     
     // Store tokens in localStorage
     if (access_token) {
@@ -29,6 +31,24 @@ export const exchangeCodeForToken = async (code) => {
     }
     if (refresh_token) {
       localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refresh_token);
+    }
+    if (athlete?.id) {
+      localStorage.setItem(STORAGE_KEYS.STRAVA_ATHLETE_ID, athlete.id.toString());
+    }
+
+    // Save athlete to Supabase
+    if (athlete?.id) {
+      try {
+        await getOrCreateAthlete(athlete.id, {
+          ...athlete,
+          access_token,
+          refresh_token,
+          expires_at
+        });
+      } catch (dbError) {
+        console.warn('Failed to save athlete to database:', dbError);
+        // Don't fail the auth flow if DB save fails
+      }
     }
 
     return response.data;
@@ -55,12 +75,22 @@ export const getRefreshToken = () => {
 };
 
 /**
+ * Get Strava athlete ID from localStorage
+ * @returns {number|null} Athlete ID or null if not found
+ */
+export const getStravaAthleteId = () => {
+  const id = localStorage.getItem(STORAGE_KEYS.STRAVA_ATHLETE_ID);
+  return id ? parseInt(id, 10) : null;
+};
+
+/**
  * Clear all stored Strava data
  */
 export const clearStravaData = () => {
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.ACTIVITIES);
+  localStorage.removeItem(STORAGE_KEYS.STRAVA_ATHLETE_ID);
 };
 
 /**

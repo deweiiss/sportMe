@@ -4,6 +4,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { getAccessToken, getActivities, clearStravaData } from '../services/stravaApi';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
+import { useStravaSync } from '../hooks/useStravaSync';
 
 // Helper function to get current week range (Monday-Sunday)
 const getCurrentWeekRange = () => {
@@ -81,6 +82,20 @@ const DataPage = () => {
   const weekRange = getCurrentWeekRange();
   const [startDate, setStartDate] = useState(weekRange.start);
   const [endDate, setEndDate] = useState(weekRange.end);
+
+  // Enable automatic Strava sync in the background (every 60 minutes)
+  useStravaSync({
+    intervalMinutes: 60,
+    enabled: true,
+    onSyncComplete: (result) => {
+      if (result.synced > 0) {
+        console.log(`Background sync completed: ${result.synced} activities synced`);
+      }
+    },
+    onSyncError: (error) => {
+      console.warn('Background sync error:', error);
+    }
+  });
 
   useEffect(() => {
     const fetchData = async () => {

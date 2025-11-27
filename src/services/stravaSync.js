@@ -66,6 +66,13 @@ export const syncActivities = async (athleteId, stravaId, options = {}) => {
               .eq('strava_id', activity.id)
               .single();
 
+            // If check fails due to RLS or other DB issues, log and skip this activity
+            if (checkError && checkError.code !== 'PGRST116') {
+              // PGRST116 means "not found" which is fine, but other errors are problematic
+              errors.push(`Failed to check activity ${activity.id}: ${checkError.message}`);
+              continue;
+            }
+
             // Skip if exists and not forcing update
             if (existing && !forceUpdate) {
               synced++;

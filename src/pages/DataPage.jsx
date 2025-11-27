@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { getAccessToken, getActivities, clearStravaData } from '../services/stravaApi';
+import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } from '../services/stravaApi';
+import { getActivitiesFromSupabase } from '../services/supabase';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import { useStravaSync } from '../hooks/useStravaSync';
 
@@ -83,21 +84,33 @@ const DataPage = () => {
   const [startDate, setStartDate] = useState(weekRange.start);
   const [endDate, setEndDate] = useState(weekRange.end);
 
+  // Track if we've seen RLS errors to disable sync
+  const [hasRLSError, setHasRLSError] = useState(false);
+
   // Enable automatic Strava sync in the background (every 60 minutes)
+  // Disable if RLS errors are detected
   useStravaSync({
     intervalMinutes: 60,
-    enabled: true,
+    enabled: !hasRLSError, // Disable sync if RLS errors detected
     onSyncComplete: (result) => {
       if (result.synced > 0) {
         console.log(`Background sync completed: ${result.synced} activities synced`);
+        setHasRLSError(false); // Re-enable if sync succeeds
       }
     },
     onSyncError: (error) => {
       console.warn('Background sync error:', error);
+      // Check if it's an RLS/policy error
+      if (error && (error.includes('PGRST116') || error.includes('permission') || error.includes('policy'))) {
+        setHasRLSError(true);
+        console.warn('RLS policy error detected. Sync disabled. Please run migration 002_add_missing_rls_policies.sql');
+      }
     }
   });
 
   useEffect(() => {
+    let isMounted = true; // Flag to prevent state updates if component unmounts
+    
     const fetchData = async () => {
       // Check if user is authenticated
       const token = getAccessToken();
@@ -108,13 +121,58 @@ const DataPage = () => {
 
       try {
         setLoading(true);
-        const data = await getActivities(100); // Fetch up to 100 activities
-        setActivities(data);
+        setError(null);
+        
+        // Get Strava athlete ID
+        const stravaId = getStravaAthleteId();
+        if (!stravaId) {
+          throw new Error('No Strava athlete ID found');
+        }
+
+        // Try to fetch from Supabase first
+        const supabaseResult = await getActivitiesFromSupabase(stravaId, 100);
+        
+        if (!isMounted) return; // Don't update state if component unmounted
+        
+        if (supabaseResult.error) {
+          // If there's an error (e.g., RLS policies missing), log it and fallback
+          console.warn('Supabase query failed:', supabaseResult.error);
+          // Check if it's an RLS/policy error
+          if (supabaseResult.error.includes('PGRST116') || supabaseResult.error.includes('permission') || supabaseResult.error.includes('policy')) {
+            setHasRLSError(true);
+            console.warn('⚠️ RLS policy error detected. Please run migration: supabase/migrations/002_add_missing_rls_policies.sql');
+          }
+          console.log('Falling back to Strava API...');
+          const stravaData = await getActivities(100);
+          if (isMounted) {
+            setActivities(stravaData);
+          }
+        } else if (supabaseResult.data && supabaseResult.data.length > 0) {
+          // Use activities from Supabase
+          if (isMounted) {
+            setActivities(supabaseResult.data);
+            console.log(`Loaded ${supabaseResult.data.length} activities from Supabase`);
+          }
+        } else {
+          // Supabase is empty, fetch from Strava API
+          console.log('Supabase empty, fetching from Strava API...');
+          const stravaData = await getActivities(100);
+          if (isMounted) {
+            setActivities(stravaData);
+          }
+          
+          // Background sync will handle saving to Supabase automatically
+          // via the useStravaSync hook
+        }
       } catch (err) {
-        setError('Failed to fetch activities. Please try again.');
-        console.error('Error fetching activities:', err);
+        if (isMounted) {
+          setError('Failed to fetch activities. Please try again.');
+          console.error('Error fetching activities:', err);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -133,6 +191,10 @@ const DataPage = () => {
     };
     
     loadSavedPlans();
+    
+    return () => {
+      isMounted = false; // Cleanup: prevent state updates after unmount
+    };
   }, [navigate]);
 
   const handleDisconnect = () => {

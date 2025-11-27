@@ -172,5 +172,71 @@ export const getAthlete = async (stravaId) => {
   }
 };
 
+/**
+ * Get activities from Supabase for an athlete
+ * @param {number} stravaId - Strava athlete ID
+ * @param {number} limit - Maximum number of activities to fetch (default: 100)
+ * @param {number} offset - Offset for pagination (default: 0)
+ * @returns {Promise<{data?: Array, error?: string}>}
+ */
+export const getActivitiesFromSupabase = async (stravaId, limit = 100, offset = 0) => {
+  try {
+    // First, get the athlete UUID from Strava ID
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('strava_id', stravaId)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { error: athleteError?.message || 'Athlete not found' };
+    }
+
+    // Fetch activities from Supabase
+    const { data: activities, error: activitiesError } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('athlete_id', athlete.id)
+      .order('start_date_local', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (activitiesError) {
+      return { error: activitiesError.message };
+    }
+
+    // Transform Supabase data to match Strava API format
+    // Map field names and ensure compatibility with existing frontend code
+    const transformedActivities = (activities || []).map(activity => ({
+      id: activity.strava_id, // Use strava_id as id for frontend compatibility
+      name: activity.name,
+      type: activity.type,
+      start_date: activity.start_date,
+      start_date_local: activity.start_date_local,
+      distance: activity.distance ? parseFloat(activity.distance) : null,
+      moving_time: activity.moving_time,
+      elapsed_time: activity.elapsed_time,
+      total_elevation_gain: activity.total_elevation_gain ? parseFloat(activity.total_elevation_gain) : null,
+      average_speed: activity.average_speed ? parseFloat(activity.average_speed) : null,
+      max_speed: activity.max_speed ? parseFloat(activity.max_speed) : null,
+      average_cadence: activity.average_cadence ? parseFloat(activity.average_cadence) : null,
+      average_watts: activity.average_watts ? parseFloat(activity.average_watts) : null,
+      weighted_average_watts: activity.weighted_average_watts ? parseFloat(activity.weighted_average_watts) : null,
+      kilojoules: activity.kilojoules ? parseFloat(activity.kilojoules) : null,
+      device_watts: activity.device_watts,
+      has_heartrate: activity.has_heartrate,
+      average_heartrate: activity.average_heartrate ? parseFloat(activity.average_heartrate) : null,
+      max_heartrate: activity.max_heartrate ? parseFloat(activity.max_heartrate) : null,
+      calories: activity.calories,
+      description: activity.description,
+      // Include raw_data if available for any additional fields
+      ...(activity.raw_data && typeof activity.raw_data === 'object' ? activity.raw_data : {})
+    }));
+
+    return { data: transformedActivities };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
 export default supabase;
 

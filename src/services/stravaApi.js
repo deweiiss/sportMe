@@ -45,14 +45,22 @@ export const exchangeCodeForToken = async (code) => {
     // Save athlete to Supabase
     if (athlete?.id) {
       try {
-        await getOrCreateAthlete(athlete.id, {
+        const result = await getOrCreateAthlete(athlete.id, {
           ...athlete,
           access_token,
           refresh_token,
           expires_at
         });
+        
+        if (result.error) {
+          console.error('Failed to save athlete to database:', result.error);
+          // Don't fail the auth flow, but log the error
+          // The athlete might still be created on retry
+        } else {
+          console.log('✅ Athlete saved to database successfully:', result.data?.id);
+        }
       } catch (dbError) {
-        console.warn('Failed to save athlete to database:', dbError);
+        console.error('Exception saving athlete to database:', dbError);
         // Don't fail the auth flow if DB save fails
       }
     }

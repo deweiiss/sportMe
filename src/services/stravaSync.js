@@ -47,9 +47,12 @@ export const syncActivities = async (athleteId, stravaId, options = {}) => {
     let page = 1;
     let hasMore = true;
 
+    console.log(`Starting sync for athlete ${athleteId}, fetching up to ${maxPages} pages...`);
+
     while (hasMore && page <= maxPages) {
       try {
         const activities = await getActivities(perPage, page);
+        console.log(`Fetched page ${page}: ${activities?.length || 0} activities`);
 
         if (!activities || activities.length === 0) {
           hasMore = false;
@@ -64,11 +67,12 @@ export const syncActivities = async (athleteId, stravaId, options = {}) => {
               .from('activities')
               .select('id, synced_at')
               .eq('strava_id', activity.id)
-              .single();
+              .maybeSingle();
 
             // If check fails due to RLS or other DB issues, log and skip this activity
-            if (checkError && checkError.code !== 'PGRST116') {
-              // PGRST116 means "not found" which is fine, but other errors are problematic
+            if (checkError) {
+              // With maybeSingle, checkError should only occur for actual errors, not "not found"
+              console.error(`Failed to check activity ${activity.id}:`, checkError);
               errors.push(`Failed to check activity ${activity.id}: ${checkError.message}`);
               continue;
             }
@@ -127,10 +131,14 @@ export const syncActivities = async (athleteId, stravaId, options = {}) => {
                 .insert(activityData);
 
               if (insertError) {
+                console.error(`Failed to insert activity ${activity.id}:`, insertError);
                 errors.push(`Failed to insert activity ${activity.id}: ${insertError.message}`);
               } else {
                 created++;
                 synced++;
+                if (created % 10 === 0) {
+                  console.log(`Inserted ${created} activities so far...`);
+                }
               }
             }
           } catch (activityError) {
@@ -201,7 +209,7 @@ export const checkIfFirstConnection = async (athleteId) => {
       .select('id')
       .eq('athlete_id', athleteId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     // If no data or error (not found), it's first connection
     return error?.code === 'PGRST116' || !data;
@@ -254,6 +262,8 @@ export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate
     const syncLogId = syncLog?.id;
     const startDateTimestamp = startDate.getTime();
 
+    console.log(`Starting date range sync for athlete ${athleteId}, from ${startDate.toISOString()}, fetching up to ${maxPages} pages...`);
+
     // Fetch activities from Strava
     let page = 1;
     let hasMore = true;
@@ -262,6 +272,7 @@ export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate
     while (hasMore && page <= maxPages && !reachedStartDate) {
       try {
         const activities = await getActivities(perPage, page);
+        console.log(`Fetched page ${page}: ${activities?.length || 0} activities`);
 
         if (!activities || activities.length === 0) {
           hasMore = false;
@@ -286,10 +297,11 @@ export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate
               .from('activities')
               .select('id, synced_at')
               .eq('strava_id', activity.id)
-              .single();
+              .maybeSingle();
 
             // If check fails due to RLS or other DB issues, log and skip this activity
-            if (checkError && checkError.code !== 'PGRST116') {
+            if (checkError) {
+              console.error(`Failed to check activity ${activity.id}:`, checkError);
               errors.push(`Failed to check activity ${activity.id}: ${checkError.message}`);
               continue;
             }
@@ -328,17 +340,21 @@ export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate
               synced_at: new Date().toISOString()
             };
 
-            // Insert new activity
-            const { error: insertError } = await supabase
-              .from('activities')
-              .insert(activityData);
+              // Insert new activity
+              const { error: insertError } = await supabase
+                .from('activities')
+                .insert(activityData);
 
-            if (insertError) {
-              errors.push(`Failed to insert activity ${activity.id}: ${insertError.message}`);
-            } else {
-              created++;
-              synced++;
-            }
+              if (insertError) {
+                console.error(`Failed to insert activity ${activity.id}:`, insertError);
+                errors.push(`Failed to insert activity ${activity.id}: ${insertError.message}`);
+              } else {
+                created++;
+                synced++;
+                if (created % 10 === 0) {
+                  console.log(`Inserted ${created} activities so far...`);
+                }
+              }
           } catch (activityError) {
             errors.push(`Error processing activity ${activity.id}: ${activityError.message}`);
           }
@@ -385,14 +401,22 @@ export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate
         .eq('id', syncLogId);
     }
 
-    return {
+    const result = {
       success: errors.length === 0 || synced > 0,
       synced,
       created,
       updated,
       errors: errors.length > 0 ? errors : undefined
     };
+
+    console.log(`Date range sync completed: ${synced} total (${created} created, ${updated} updated), ${errors.length} errors`);
+    if (errors.length > 0) {
+      console.error('Date range sync errors:', errors.slice(0, 5)); // Log first 5 errors
+    }
+
+    return result;
   } catch (err) {
+    console.error('Date range sync exception:', err);
     return {
       success: false,
       synced,
@@ -481,7 +505,7 @@ export const autoSyncActivities = async (stravaId, forceImmediate = false) => {
       .select('id')
       .eq('strava_id', stravaId)
       .eq('user_id', user.id) // Ensure we get the athlete for the current user
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return {

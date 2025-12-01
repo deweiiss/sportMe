@@ -89,9 +89,14 @@ export const getOrCreateAthlete = async (stravaId, athleteData = {}) => {
       .select('*')
       .eq('strava_id', stravaId)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (findError) {
+      console.error('Error finding existing athlete:', findError);
+    }
 
     if (existing && !findError) {
+      console.log('Found existing athlete:', existing.id);
       // Update tokens if provided
       if (athleteData.access_token || athleteData.refresh_token) {
         const { data: updated, error: updateError } = await supabase
@@ -119,6 +124,7 @@ export const getOrCreateAthlete = async (stravaId, athleteData = {}) => {
     }
 
     // If not found, create new athlete linked to current user
+    console.log('Creating new athlete for user:', { stravaId, userId: user.id });
     const { data: created, error: createError } = await supabase
       .from('athletes')
       .insert({
@@ -139,9 +145,19 @@ export const getOrCreateAthlete = async (stravaId, athleteData = {}) => {
       .single();
 
     if (createError) {
+      console.error('Failed to create athlete:', {
+        error: createError,
+        code: createError.code,
+        message: createError.message,
+        details: createError.details,
+        hint: createError.hint,
+        stravaId,
+        userId: user.id
+      });
       return { error: createError.message };
     }
 
+    console.log('✅ Athlete created successfully:', created.id);
     return { data: created };
   } catch (err) {
     return { error: err.message };
@@ -199,7 +215,7 @@ export const getAthlete = async (stravaId) => {
       .from('athletes')
       .select('*')
       .eq('strava_id', stravaId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       return { error: error.message };
@@ -238,7 +254,7 @@ export const getActivitiesFromSupabase = async (stravaId = null, limit = 100, of
       athleteQuery = athleteQuery.eq('strava_id', stravaId);
     }
     
-    const { data: athlete, error: athleteError } = await athleteQuery.single();
+    const { data: athlete, error: athleteError } = await athleteQuery.maybeSingle();
 
     if (athleteError || !athlete) {
       return { error: athleteError?.message || 'Athlete not found for this user' };
@@ -308,7 +324,7 @@ export const checkUserStravaConnection = async () => {
       .from('athletes')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return { hasStrava: false };
@@ -371,7 +387,7 @@ export const getTrainingPlans = async () => {
       .from('athletes')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return { error: athleteError?.message || 'Athlete not found for this user' };
@@ -436,7 +452,7 @@ export const saveTrainingPlan = async (planData) => {
       .from('athletes')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return { error: athleteError?.message || 'Athlete not found for this user' };
@@ -532,7 +548,7 @@ export const deleteTrainingPlan = async (planId) => {
       .from('athletes')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return { success: false, error: athleteError?.message || 'Athlete not found for this user' };
@@ -580,7 +596,7 @@ export const migrateTrainingPlansFromLocalStorage = async () => {
       .from('athletes')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (athleteError || !athlete) {
       return { migrated: 0, error: athleteError?.message || 'Athlete not found for this user' };

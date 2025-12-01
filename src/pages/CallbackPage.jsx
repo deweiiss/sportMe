@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { exchangeCodeForToken, getStravaAthleteId } from '../services/stravaApi';
 import { getCurrentUser } from '../services/auth';
 import { autoSyncActivities } from '../services/stravaSync';
+import { checkUserStravaConnection } from '../services/supabase';
 
 const CallbackPage = () => {
   const navigate = useNavigate();
@@ -38,6 +39,23 @@ const CallbackPage = () => {
 
         await exchangeCodeForToken(code);
         
+        // Verify athlete was created in database
+        // Retry a few times in case of timing issues
+        let athleteVerified = false;
+        for (let i = 0; i < 3; i++) {
+          await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+          const { hasStrava } = await checkUserStravaConnection();
+          if (hasStrava) {
+            athleteVerified = true;
+            console.log('✅ Athlete verified in database');
+            break;
+          }
+        }
+        
+        if (!athleteVerified) {
+          console.warn('⚠️ Athlete not found in database after token exchange. Sync may fail.');
+        }
+        
         // Trigger immediate sync after successful connection
         // This will sync 6 months of activities on first connection
         const stravaId = getStravaAthleteId();
@@ -54,6 +72,8 @@ const CallbackPage = () => {
             console.error('Error during initial sync:', err);
             // Don't block navigation on sync error
           });
+        } else {
+          console.warn('No Strava athlete ID found after token exchange');
         }
         
         // Redirect to data page on success

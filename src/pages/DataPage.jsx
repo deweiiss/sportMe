@@ -4,6 +4,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } from '../services/stravaApi';
 import { getActivitiesFromSupabase } from '../services/supabase';
+import { signOut } from '../services/auth';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import { useStravaSync } from '../hooks/useStravaSync';
 
@@ -112,24 +113,14 @@ const DataPage = () => {
     let isMounted = true; // Flag to prevent state updates if component unmounts
     
     const fetchData = async () => {
-      // Check if user is authenticated
-      const token = getAccessToken();
-      if (!token) {
-        navigate('/');
-        return;
-      }
-
       try {
         setLoading(true);
         setError(null);
         
-        // Get Strava athlete ID
+        // Get Strava athlete ID (optional, for backward compatibility)
         const stravaId = getStravaAthleteId();
-        if (!stravaId) {
-          throw new Error('No Strava athlete ID found');
-        }
 
-        // Try to fetch from Supabase first
+        // Try to fetch from Supabase first (will use authenticated user)
         const supabaseResult = await getActivitiesFromSupabase(stravaId, 100);
         
         if (!isMounted) return; // Don't update state if component unmounted
@@ -197,9 +188,20 @@ const DataPage = () => {
     };
   }, [navigate]);
 
-  const handleDisconnect = () => {
-    clearStravaData();
-    navigate('/');
+  const handleDisconnect = async () => {
+    if (window.confirm('Are you sure you want to disconnect your Strava account?')) {
+      clearStravaData();
+      // Note: This only clears localStorage. The athlete record in DB remains but tokens are invalid.
+      // User can reconnect Strava later.
+      window.location.reload(); // Reload to refresh the page
+    }
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      await signOut();
+      navigate('/');
+    }
   };
 
   const formatDistance = (meters) => {
@@ -355,7 +357,10 @@ const DataPage = () => {
               Generate Training Plan
             </button>
             <button onClick={handleDisconnect} className="disconnect-button">
-              Disconnect
+              Disconnect Strava
+            </button>
+            <button onClick={handleLogout} className="logout-button">
+              Logout
             </button>
           </div>
         </div>

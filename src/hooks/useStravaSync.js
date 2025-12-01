@@ -29,9 +29,9 @@ export const useStravaSync = (options = {}) => {
       return;
     }
 
-    const token = getAccessToken();
+    const token = await getAccessToken(true); // Auto-refresh if expired
     if (!token) {
-      return; // Not authenticated
+      return; // Not authenticated or token refresh failed
     }
 
     const stravaId = getStravaAthleteId();

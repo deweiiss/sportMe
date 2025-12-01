@@ -241,8 +241,17 @@ export const shouldSync = async (athleteId, hoursThreshold = 1) => {
  */
 export const autoSyncActivities = async (stravaId) => {
   try {
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return {
+        success: false,
+        error: 'User not authenticated. Please sign in first.'
+      };
+    }
+
     // Check if we have an access token
-    const token = getAccessToken();
+    const token = await getAccessToken(true); // Auto-refresh if expired
     if (!token) {
       return {
         success: false,
@@ -250,11 +259,12 @@ export const autoSyncActivities = async (stravaId) => {
       };
     }
 
-    // Get athlete from database
+    // Get athlete from database for the current user
     const { data: athlete, error: athleteError } = await supabase
       .from('athletes')
       .select('id')
       .eq('strava_id', stravaId)
+      .eq('user_id', user.id) // Ensure we get the athlete for the current user
       .single();
 
     if (athleteError || !athlete) {

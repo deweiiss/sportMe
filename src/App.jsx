@@ -3,6 +3,7 @@ import AuthPage from './pages/AuthPage';
 import CallbackPage from './pages/CallbackPage';
 import DataPage from './pages/DataPage';
 import TrainingPlanPage from './pages/TrainingPlanPage';
+import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
 function App() {
@@ -11,11 +12,26 @@ function App() {
       <Routes>
         <Route path="/" element={<AuthPage />} />
         <Route path="/auth/callback" element={<CallbackPage />} />
-        <Route path="/data" element={<DataPage />} />
-        <Route path="/training" element={<TrainingPlanPage />} />
+        <Route
+          path="/data"
+          element={
+            <ProtectedRoute>
+              <DataPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training"
+          element={
+            <ProtectedRoute>
+              <TrainingPlanPage />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </Router>
   );
 }
 
 export default App;
+

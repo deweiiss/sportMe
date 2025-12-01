@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { exchangeCodeForToken } from '../services/stravaApi';
+import { getCurrentUser } from '../services/auth';
 
 const CallbackPage = () => {
   const navigate = useNavigate();
@@ -26,6 +27,14 @@ const CallbackPage = () => {
 
     const handleTokenExchange = async () => {
       try {
+        // Check if user is authenticated
+        const { user, error: authError } = await getCurrentUser();
+        if (authError || !user) {
+          setError('Please sign in first before connecting Strava.');
+          setLoading(false);
+          return;
+        }
+
         await exchangeCodeForToken(code);
         // Redirect to data page on success
         navigate('/data');

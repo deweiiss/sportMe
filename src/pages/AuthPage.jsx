@@ -1,19 +1,72 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAccessToken } from '../services/stravaApi';
+import { signIn, signUp, getCurrentUser } from '../services/auth';
+import { checkUserStravaConnection } from '../services/supabase';
 
 const AuthPage = () => {
   const navigate = useNavigate();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated
-    const token = getAccessToken();
-    if (token) {
-      navigate('/data');
-    }
+    const checkAuth = async () => {
+      const { user } = await getCurrentUser();
+      if (user) {
+        setIsAuthenticated(true);
+        // Check if Strava is connected for this user (verify in database, not just localStorage)
+        const { hasStrava } = await checkUserStravaConnection();
+        if (hasStrava) {
+          navigate('/data');
+        }
+        // If authenticated but Strava not connected, show Strava connect option
+      } else {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
   }, [navigate]);
 
-  const handleConnect = () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      let result;
+      if (isSignUp) {
+        result = await signUp(email, password);
+      } else {
+        result = await signIn(email, password);
+      }
+
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+
+      // User successfully authenticated
+      setIsAuthenticated(true);
+      setLoading(false);
+
+      // Check if Strava is already connected for this user (verify in database)
+      const { hasStrava } = await checkUserStravaConnection();
+      if (hasStrava) {
+        navigate('/data');
+      }
+      // If Strava not connected, the UI will show the connect button
+    } catch (err) {
+      setError(err.message || 'An error occurred');
+      setLoading(false);
+    }
+  };
+
+  const handleConnectStrava = () => {
     const clientId = import.meta.env.VITE_STRAVA_CLIENT_ID;
     const redirectUri = import.meta.env.VITE_STRAVA_REDIRECT_URI;
     const scope = 'activity:read_all';
@@ -41,14 +94,91 @@ const AuthPage = () => {
     <div className="auth-page">
       <div className="auth-container">
         <h1>SportMe</h1>
-        <p>Connect your Strava account to view your workout data</p>
-        <button onClick={handleConnect} className="connect-button">
-          Connect with Strava
-        </button>
+        
+        {!isAuthenticated ? (
+          /* Authentication Form - shown first */
+          <div className="auth-form-section">
+            <div className="auth-tabs">
+              <button
+                className={!isSignUp ? 'active' : ''}
+                onClick={() => {
+                  setIsSignUp(false);
+                  setError(null);
+                }}
+                disabled={loading}
+              >
+                Sign In
+              </button>
+              <button
+                className={isSignUp ? 'active' : ''}
+                onClick={() => {
+                  setIsSignUp(true);
+                  setError(null);
+                }}
+                disabled={loading}
+              >
+                Sign Up
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="auth-form">
+              <div className="form-group">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="your@email.com"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="••••••••"
+                  minLength={6}
+                />
+              </div>
+
+              {error && (
+                <div className="error-message">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="auth-submit-button"
+                disabled={loading}
+              >
+                {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Strava Connection Section - shown after authentication */
+          <div className="strava-connect-section">
+            <p>Welcome! Connect your Strava account to view your workout data</p>
+            <button
+              onClick={handleConnectStrava}
+              className="connect-button"
+            >
+              Connect with Strava
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default AuthPage;
-

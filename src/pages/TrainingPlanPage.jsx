@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateTrainingPlan, testOllamaConnection, getAvailableModels } from '../services/ollamaApi';
 import { getAccessToken } from '../services/stravaApi';
+import { getCurrentUser, signOut } from '../services/auth';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import './TrainingPlanPage.css';
 
@@ -272,30 +273,34 @@ const TrainingPlanPage = () => {
 
   useEffect(() => {
     // Check if user is authenticated
-    const token = getAccessToken();
-    if (!token) {
-      navigate('/');
-      return;
-    }
-
-    // Test Ollama connection
-    const checkConnection = async () => {
-      const connected = await testOllamaConnection();
-      setIsConnected(connected);
-      
-      if (connected) {
-        try {
-          const availableModels = await getAvailableModels();
-          if (availableModels.length > 0) {
-            setModel(availableModels[0]);
-          }
-        } catch (err) {
-          console.error('Error fetching models:', err);
-        }
+    const checkAuth = async () => {
+      const { user, error } = await getCurrentUser();
+      if (error || !user) {
+        navigate('/');
+        return;
       }
-    };
 
-    checkConnection();
+      // Test Ollama connection
+      const checkConnection = async () => {
+        const connected = await testOllamaConnection();
+        setIsConnected(connected);
+        
+        if (connected) {
+          try {
+            const availableModels = await getAvailableModels();
+            if (availableModels.length > 0) {
+              setModel(availableModels[0]);
+            }
+          } catch (err) {
+            console.error('Error fetching models:', err);
+          }
+        }
+      };
+
+      checkConnection();
+    };
+    checkAuth();
+
   }, [navigate]);
 
   const handleGeneratePlan = async (planType) => {
@@ -349,6 +354,13 @@ const TrainingPlanPage = () => {
     setResponse('');
     setPlanData(null);
     setError(null);
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      await signOut();
+      navigate('/');
+    }
   };
 
   // Handle plan changes from calendar
@@ -429,12 +441,17 @@ const TrainingPlanPage = () => {
     return (
       <div className="training-plan-page">
         <div className="training-container">
-          <div className="header">
-            <h1>Generate Training Plan</h1>
+        <div className="header">
+          <h1>Generate Training Plan</h1>
+          <div className="header-actions">
             <button onClick={() => navigate('/data')} className="back-button">
               Back to Activities
             </button>
+            <button onClick={handleLogout} className="logout-button">
+              Logout
+            </button>
           </div>
+        </div>
 
           <p className="instruction-text">
             Select a training plan type to generate a personalized plan.
@@ -521,6 +538,9 @@ const TrainingPlanPage = () => {
             </button>
             <button onClick={() => navigate('/data')} className="back-button">
               Back to Activities
+            </button>
+            <button onClick={handleLogout} className="logout-button">
+              Logout
             </button>
           </div>
         </div>

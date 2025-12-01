@@ -69,30 +69,61 @@ export const testConnection = async () => {
 };
 
 /**
- * Get or create athlete by Strava ID
+ * Get or create athlete by Strava ID, linked to current authenticated user
  * @param {number} stravaId - Strava athlete ID
  * @param {Object} athleteData - Athlete data from Strava
  * @returns {Promise<{data?: Object, error?: string}>}
  */
 export const getOrCreateAthlete = async (stravaId, athleteData = {}) => {
   try {
-    // First, try to find existing athlete
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // First, try to find existing athlete for this user
     const { data: existing, error: findError } = await supabase
       .from('athletes')
       .select('*')
       .eq('strava_id', stravaId)
+      .eq('user_id', user.id)
       .single();
 
     if (existing && !findError) {
+      // Update tokens if provided
+      if (athleteData.access_token || athleteData.refresh_token) {
+        const { data: updated, error: updateError } = await supabase
+          .from('athletes')
+          .update({
+            access_token: athleteData.access_token || existing.access_token,
+            refresh_token: athleteData.refresh_token || existing.refresh_token,
+            token_expires_at: athleteData.expires_at 
+              ? new Date(athleteData.expires_at * 1000).toISOString()
+              : existing.token_expires_at,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.warn('Failed to update athlete tokens:', updateError);
+        } else if (updated) {
+          return { data: updated };
+        }
+      }
+      
       return { data: existing };
     }
 
-    // If not found, create new athlete
-    // Note: This requires service role key or proper RLS policies
+    // If not found, create new athlete linked to current user
     const { data: created, error: createError } = await supabase
       .from('athletes')
       .insert({
         strava_id: stravaId,
+        user_id: user.id, // Link to authenticated user
         username: athleteData.username,
         firstname: athleteData.firstname,
         lastname: athleteData.lastname,
@@ -118,13 +149,20 @@ export const getOrCreateAthlete = async (stravaId, athleteData = {}) => {
 };
 
 /**
- * Update athlete tokens
+ * Update athlete tokens for the current authenticated user
  * @param {number} stravaId - Strava athlete ID
  * @param {Object} tokenData - Token data
  * @returns {Promise<{data?: Object, error?: string}>}
  */
 export const updateAthleteTokens = async (stravaId, tokenData) => {
   try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
     const { data, error } = await supabase
       .from('athletes')
       .update({
@@ -136,6 +174,7 @@ export const updateAthleteTokens = async (stravaId, tokenData) => {
         updated_at: new Date().toISOString()
       })
       .eq('strava_id', stravaId)
+      .eq('user_id', user.id) // Ensure we only update the current user's athlete
       .select()
       .single();
 
@@ -173,23 +212,36 @@ export const getAthlete = async (stravaId) => {
 };
 
 /**
- * Get activities from Supabase for an athlete
- * @param {number} stravaId - Strava athlete ID
+ * Get activities from Supabase for the current authenticated user
+ * @param {number} stravaId - Strava athlete ID (optional, for backward compatibility)
  * @param {number} limit - Maximum number of activities to fetch (default: 100)
  * @param {number} offset - Offset for pagination (default: 0)
  * @returns {Promise<{data?: Array, error?: string}>}
  */
-export const getActivitiesFromSupabase = async (stravaId, limit = 100, offset = 0) => {
+export const getActivitiesFromSupabase = async (stravaId = null, limit = 100, offset = 0) => {
   try {
-    // First, get the athlete UUID from Strava ID
-    const { data: athlete, error: athleteError } = await supabase
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    let athleteQuery = supabase
       .from('athletes')
       .select('id')
-      .eq('strava_id', stravaId)
-      .single();
+      .eq('user_id', user.id);
+    
+    // If stravaId provided, also filter by it (for backward compatibility)
+    if (stravaId) {
+      athleteQuery = athleteQuery.eq('strava_id', stravaId);
+    }
+    
+    const { data: athlete, error: athleteError } = await athleteQuery.single();
 
     if (athleteError || !athlete) {
-      return { error: athleteError?.message || 'Athlete not found' };
+      return { error: athleteError?.message || 'Athlete not found for this user' };
     }
 
     // Fetch activities from Supabase
@@ -235,6 +287,36 @@ export const getActivitiesFromSupabase = async (stravaId, limit = 100, offset = 
     return { data: transformedActivities };
   } catch (err) {
     return { error: err.message };
+  }
+};
+
+/**
+ * Check if the current user has a Strava connection
+ * @returns {Promise<{hasStrava: boolean, athlete?: Object, error?: string}>}
+ */
+export const checkUserStravaConnection = async () => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { hasStrava: false };
+    }
+
+    // Check if user has an athlete record
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { hasStrava: false };
+    }
+
+    return { hasStrava: true, athlete };
+  } catch (err) {
+    return { hasStrava: false, error: err.message };
   }
 };
 

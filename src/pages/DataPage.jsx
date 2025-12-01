@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } from '../services/stravaApi';
-import { getActivitiesFromSupabase } from '../services/supabase';
+import { getActivitiesFromSupabase, deleteUserStravaData } from '../services/supabase';
 import { signOut } from '../services/auth';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import { useStravaSync } from '../hooks/useStravaSync';
@@ -189,11 +189,31 @@ const DataPage = () => {
   }, [navigate]);
 
   const handleDisconnect = async () => {
-    if (window.confirm('Are you sure you want to disconnect your Strava account?')) {
-      clearStravaData();
-      // Note: This only clears localStorage. The athlete record in DB remains but tokens are invalid.
-      // User can reconnect Strava later.
-      window.location.reload(); // Reload to refresh the page
+    if (window.confirm('Are you sure you want to disconnect your Strava account? This will delete all your activities, training plans, and other Strava data from the database.')) {
+      try {
+        setLoading(true);
+        
+        // Delete all Strava data from database (athlete, activities, sync logs, training plans)
+        const result = await deleteUserStravaData();
+        
+        if (result.error) {
+          setError(`Failed to disconnect: ${result.error}`);
+          setLoading(false);
+          return;
+        }
+        
+        // Clear Strava data from localStorage
+        clearStravaData();
+        
+        // Clear training plans from localStorage (they're also stored locally)
+        localStorage.removeItem('trainingPlans');
+        
+        // Reload the page to refresh the UI
+        window.location.reload();
+      } catch (err) {
+        setError(`Error disconnecting Strava: ${err.message}`);
+        setLoading(false);
+      }
     }
   };
 

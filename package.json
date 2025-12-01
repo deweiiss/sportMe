@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:supabase": "node scripts/test-supabase-connection.js"
+    "test:supabase": "node scripts/test-supabase-connection.js",
+    "clear:db": "node scripts/clear-database.js --confirm"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",

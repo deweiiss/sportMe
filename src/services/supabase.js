@@ -320,5 +320,38 @@ export const checkUserStravaConnection = async () => {
   }
 };
 
+/**
+ * Delete all Strava data for the current user
+ * This will delete the athlete record, which will cascade delete:
+ * - All activities
+ * - All sync logs
+ * - All training plans
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const deleteUserStravaData = async () => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Delete the athlete record (CASCADE will delete all related data)
+    const { error: deleteError } = await supabase
+      .from('athletes')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (deleteError) {
+      return { success: false, error: deleteError.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
 export default supabase;
 

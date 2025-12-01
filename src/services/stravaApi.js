@@ -6,7 +6,6 @@ const STORAGE_KEYS = {
   ACCESS_TOKEN: 'strava_access_token',
   REFRESH_TOKEN: 'strava_refresh_token',
   TOKEN_EXPIRES_AT: 'strava_token_expires_at',
-  ACTIVITIES: 'strava_activities',
   STRAVA_ATHLETE_ID: 'strava_athlete_id',
 };
 
@@ -195,7 +194,6 @@ export const clearStravaData = () => {
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRES_AT);
-  localStorage.removeItem(STORAGE_KEYS.ACTIVITIES);
   localStorage.removeItem(STORAGE_KEYS.STRAVA_ATHLETE_ID);
 };
 
@@ -233,8 +231,7 @@ export const getActivities = async (perPage = 30, page = 1) => {
 
     const activities = response.data;
     
-    // Store activities in localStorage
-    localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(activities));
+    // Activities are now stored in Supabase database, not localStorage
 
     return activities;
   } catch (error) {
@@ -243,12 +240,4 @@ export const getActivities = async (perPage = 30, page = 1) => {
   }
 };
 
-/**
- * Get stored activities from localStorage
- * @returns {Array} Array of activity objects or empty array
- */
-export const getStoredActivities = () => {
-  const stored = localStorage.getItem(STORAGE_KEYS.ACTIVITIES);
-  return stored ? JSON.parse(stored) : [];
-};
 

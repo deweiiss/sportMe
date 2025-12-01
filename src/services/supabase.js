@@ -353,5 +353,316 @@ export const deleteUserStravaData = async () => {
   }
 };
 
+/**
+ * Get all training plans for the current authenticated user
+ * @returns {Promise<{data?: Array, error?: string}>}
+ */
+export const getTrainingPlans = async () => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Fetch training plans from Supabase
+    const { data: plans, error: plansError } = await supabase
+      .from('training_plans')
+      .select('*')
+      .eq('athlete_id', athlete.id)
+      .order('created_at', { ascending: false });
+
+    if (plansError) {
+      return { error: plansError.message };
+    }
+
+    // Transform database format to frontend format
+    const transformedPlans = (plans || []).map(plan => ({
+      id: plan.id,
+      planType: plan.plan_type,
+      startDate: plan.start_date,
+      endDate: plan.end_date,
+      weeklyHours: plan.weekly_hours,
+      weeks: {
+        week1: plan.week1,
+        week2: plan.week2,
+        week3: plan.week3,
+        week4: plan.week4
+      },
+      createdAt: plan.created_at,
+      updatedAt: plan.updated_at
+    }));
+
+    return { data: transformedPlans };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Save or update a training plan for the current authenticated user
+ * @param {Object} planData - Training plan data
+ * @param {string} planData.planType - Type of plan ('ftp', 'base', 'vo2max')
+ * @param {string} planData.startDate - Start date (YYYY-MM-DD)
+ * @param {string} planData.endDate - End date (YYYY-MM-DD)
+ * @param {string} planData.weeklyHours - Weekly hours (optional)
+ * @param {Object} planData.weeks - Weeks object with week1-4
+ * @param {string} planData.id - Plan ID for updates (optional, if not provided creates new)
+ * @returns {Promise<{data?: Object, error?: string}>}
+ */
+export const saveTrainingPlan = async (planData) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Prepare data for database
+    const dbData = {
+      athlete_id: athlete.id,
+      plan_type: planData.planType,
+      start_date: planData.startDate,
+      end_date: planData.endDate,
+      weekly_hours: planData.weeklyHours || null,
+      week1: planData.weeks.week1,
+      week2: planData.weeks.week2,
+      week3: planData.weeks.week3,
+      week4: planData.weeks.week4,
+      updated_at: new Date().toISOString()
+    };
+
+    let result;
+    if (planData.id) {
+      // Update existing plan
+      const { data, error } = await supabase
+        .from('training_plans')
+        .update(dbData)
+        .eq('id', planData.id)
+        .eq('athlete_id', athlete.id) // Ensure user owns this plan
+        .select()
+        .single();
+
+      if (error) {
+        return { error: error.message };
+      }
+      result = data;
+    } else {
+      // Create new plan
+      // Preserve createdAt if provided, otherwise use current time
+      if (planData.createdAt) {
+        dbData.created_at = planData.createdAt;
+      }
+      
+      const { data, error } = await supabase
+        .from('training_plans')
+        .insert(dbData)
+        .select()
+        .single();
+
+      if (error) {
+        return { error: error.message };
+      }
+      result = data;
+    }
+
+    // Transform to frontend format
+    const transformedPlan = {
+      id: result.id,
+      planType: result.plan_type,
+      startDate: result.start_date,
+      endDate: result.end_date,
+      weeklyHours: result.weekly_hours,
+      weeks: {
+        week1: result.week1,
+        week2: result.week2,
+        week3: result.week3,
+        week4: result.week4
+      },
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    };
+
+    return { data: transformedPlan };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Delete a training plan for the current authenticated user
+ * @param {string} planId - Plan ID to delete
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const deleteTrainingPlan = async (planId) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { success: false, error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Delete the plan (RLS will ensure user can only delete their own plans)
+    const { error: deleteError } = await supabase
+      .from('training_plans')
+      .delete()
+      .eq('id', planId)
+      .eq('athlete_id', athlete.id); // Ensure user owns this plan
+
+    if (deleteError) {
+      return { success: false, error: deleteError.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * Migrate training plans from localStorage to database
+ * This is a one-time migration helper that can be called on app initialization
+ * @returns {Promise<{migrated: number, error?: string}>}
+ */
+export const migrateTrainingPlansFromLocalStorage = async () => {
+  try {
+    // Check if migration flag exists in localStorage
+    const migrationFlag = localStorage.getItem('trainingPlans_migrated');
+    if (migrationFlag === 'true') {
+      return { migrated: 0, message: 'Migration already completed' };
+    }
+
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { migrated: 0, error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (athleteError || !athlete) {
+      return { migrated: 0, error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Get plans from localStorage
+    const storedPlans = localStorage.getItem('trainingPlans');
+    if (!storedPlans) {
+      // No plans to migrate, mark as done
+      localStorage.setItem('trainingPlans_migrated', 'true');
+      return { migrated: 0, message: 'No plans to migrate' };
+    }
+
+    let plans;
+    try {
+      plans = JSON.parse(storedPlans);
+    } catch (parseError) {
+      return { migrated: 0, error: 'Failed to parse localStorage plans' };
+    }
+
+    if (!Array.isArray(plans) || plans.length === 0) {
+      localStorage.setItem('trainingPlans_migrated', 'true');
+      return { migrated: 0, message: 'No plans to migrate' };
+    }
+
+    // Migrate each plan
+    let migratedCount = 0;
+    const errors = [];
+
+    for (const plan of plans) {
+      try {
+        // Check if plan already exists (by checking createdAt and planType combination)
+        // Since we don't have a unique constraint, we'll try to insert and handle duplicates
+        const dbData = {
+          athlete_id: athlete.id,
+          plan_type: plan.planType,
+          start_date: plan.startDate,
+          end_date: plan.endDate,
+          weekly_hours: plan.weeklyHours || null,
+          week1: plan.weeks.week1,
+          week2: plan.weeks.week2,
+          week3: plan.weeks.week3,
+          week4: plan.weeks.week4,
+          created_at: plan.createdAt || new Date().toISOString(),
+          updated_at: plan.updatedAt || new Date().toISOString()
+        };
+
+        const { error: insertError } = await supabase
+          .from('training_plans')
+          .insert(dbData);
+
+        if (insertError) {
+          // If it's a duplicate or constraint error, skip it
+          if (insertError.code === '23505' || insertError.message.includes('duplicate')) {
+            console.log('Plan already exists, skipping:', plan.planType, plan.createdAt);
+            continue;
+          }
+          errors.push(insertError.message);
+        } else {
+          migratedCount++;
+        }
+      } catch (err) {
+        errors.push(err.message);
+      }
+    }
+
+    // Mark migration as complete
+    if (migratedCount > 0 || errors.length === 0) {
+      localStorage.setItem('trainingPlans_migrated', 'true');
+      // Optionally remove old localStorage data after successful migration
+      // localStorage.removeItem('trainingPlans');
+    }
+
+    return {
+      migrated: migratedCount,
+      total: plans.length,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  } catch (err) {
+    return { migrated: 0, error: err.message };
+  }
+};
+
 export default supabase;
 

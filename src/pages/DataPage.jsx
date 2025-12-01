@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } from '../services/stravaApi';
-import { getActivitiesFromSupabase, deleteUserStravaData } from '../services/supabase';
+import { getActivitiesFromSupabase, deleteUserStravaData, getTrainingPlans, saveTrainingPlan, deleteTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
 import { signOut } from '../services/auth';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import { useStravaSync } from '../hooks/useStravaSync';
@@ -169,15 +169,38 @@ const DataPage = () => {
 
     fetchData();
     
-    // Load saved training plans
-    const loadSavedPlans = () => {
+    // Migrate training plans from localStorage to database (one-time)
+    const migratePlans = async () => {
       try {
-        const plans = JSON.parse(localStorage.getItem('trainingPlans') || '[]');
-        // Sort by creation date, most recent first
-        plans.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setSavedPlans(plans);
+        const migrationResult = await migrateTrainingPlansFromLocalStorage();
+        if (migrationResult.migrated > 0) {
+          console.log(`Migrated ${migrationResult.migrated} training plans from localStorage to database`);
+        }
+      } catch (err) {
+        console.warn('Failed to migrate training plans:', err);
+        // Don't block the app if migration fails
+      }
+    };
+    
+    // Load saved training plans from database
+    const loadSavedPlans = async () => {
+      try {
+        // First migrate any localStorage plans
+        await migratePlans();
+        
+        // Then load from database
+        const result = await getTrainingPlans();
+        if (result.error) {
+          console.error('Error loading training plans:', result.error);
+          setSavedPlans([]);
+          return;
+        }
+        
+        // Plans are already sorted by created_at DESC from the query
+        setSavedPlans(result.data || []);
       } catch (err) {
         console.error('Error loading saved plans:', err);
+        setSavedPlans([]);
       }
     };
     
@@ -205,8 +228,8 @@ const DataPage = () => {
         // Clear Strava data from localStorage
         clearStravaData();
         
-        // Clear training plans from localStorage (they're also stored locally)
-        localStorage.removeItem('trainingPlans');
+        // Training plans are already deleted via deleteUserStravaData (CASCADE)
+        // No need to manually remove from localStorage
         
         // Reload the page to refresh the UI
         window.location.reload();
@@ -286,47 +309,70 @@ const DataPage = () => {
     setSelectedPlan(null);
   };
 
-  const handlePlanChange = (updatedPlan) => {
-    if (!selectedPlan) return;
+  const handlePlanChange = async (updatedPlan) => {
+    if (!selectedPlan || !selectedPlan.id) return;
     
-    // Update the plan in localStorage
-    const plans = JSON.parse(localStorage.getItem('trainingPlans') || '[]');
-    const planIndex = plans.findIndex(p => 
-      p.createdAt === selectedPlan.createdAt && 
-      p.planType === selectedPlan.planType
-    );
-    
-    if (planIndex !== -1) {
-      plans[planIndex] = {
-        ...plans[planIndex],
+    try {
+      // Update the plan in database
+      const planToUpdate = {
+        id: selectedPlan.id,
+        planType: selectedPlan.planType,
         startDate: updatedPlan.startdate,
         endDate: updatedPlan.enddate,
+        weeklyHours: selectedPlan.weeklyHours || null,
         weeks: {
           week1: updatedPlan.week1,
           week2: updatedPlan.week2,
           week3: updatedPlan.week3,
           week4: updatedPlan.week4
-        },
-        updatedAt: new Date().toISOString()
+        }
       };
-      localStorage.setItem('trainingPlans', JSON.stringify(plans));
-      setSavedPlans([...plans]);
-      setSelectedPlan({ ...selectedPlan, calendarData: updatedPlan });
+
+      const result = await saveTrainingPlan(planToUpdate);
+      
+      if (result.error) {
+        console.error('Failed to update plan:', result.error);
+        alert(`Failed to update plan: ${result.error}`);
+        return;
+      }
+
+      // Update local state
+      const updatedPlans = savedPlans.map(p => 
+        p.id === selectedPlan.id ? result.data : p
+      );
+      setSavedPlans(updatedPlans);
+      setSelectedPlan({ ...result.data, calendarData: updatedPlan });
+    } catch (err) {
+      console.error('Error updating plan:', err);
+      alert(`Failed to update plan: ${err.message}`);
     }
   };
 
-  const handleDeletePlan = (plan) => {
+  const handleDeletePlan = async (plan) => {
+    if (!plan.id) {
+      console.error('Plan missing ID, cannot delete');
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this training plan?')) {
-      const plans = JSON.parse(localStorage.getItem('trainingPlans') || '[]');
-      const filteredPlans = plans.filter(p => 
-        !(p.createdAt === plan.createdAt && p.planType === plan.planType)
-      );
-      localStorage.setItem('trainingPlans', JSON.stringify(filteredPlans));
-      setSavedPlans(filteredPlans);
-      if (selectedPlan && 
-          selectedPlan.createdAt === plan.createdAt && 
-          selectedPlan.planType === plan.planType) {
-        setSelectedPlan(null);
+      try {
+        const result = await deleteTrainingPlan(plan.id);
+        
+        if (result.error) {
+          alert(`Failed to delete plan: ${result.error}`);
+          return;
+        }
+
+        // Update local state
+        const filteredPlans = savedPlans.filter(p => p.id !== plan.id);
+        setSavedPlans(filteredPlans);
+        
+        if (selectedPlan && selectedPlan.id === plan.id) {
+          setSelectedPlan(null);
+        }
+      } catch (err) {
+        console.error('Error deleting plan:', err);
+        alert(`Failed to delete plan: ${err.message}`);
       }
     }
   };
@@ -467,8 +513,7 @@ const DataPage = () => {
                       className="view-plan-button"
                     >
                       {selectedPlan && 
-                       selectedPlan.createdAt === plan.createdAt && 
-                       selectedPlan.planType === plan.planType 
+                       selectedPlan.id === plan.id 
                         ? 'Hide Plan' 
                         : 'View/Edit Plan'}
                     </button>
@@ -480,8 +525,7 @@ const DataPage = () => {
                     </button>
                   </div>
                   {selectedPlan && 
-                   selectedPlan.createdAt === plan.createdAt && 
-                   selectedPlan.planType === plan.planType && (
+                   selectedPlan.id === plan.id && (
                     <div className="plan-calendar-view">
                       <TrainingPlanCalendar
                         planData={selectedPlan.calendarData}

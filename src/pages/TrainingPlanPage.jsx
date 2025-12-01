@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { generateTrainingPlan, testOllamaConnection, getAvailableModels } from '../services/ollamaApi';
 import { getAccessToken } from '../services/stravaApi';
 import { getCurrentUser, signOut } from '../services/auth';
+import { saveTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 import './TrainingPlanPage.css';
 
@@ -280,6 +281,17 @@ const TrainingPlanPage = () => {
         return;
       }
 
+      // Migrate training plans from localStorage to database (one-time)
+      try {
+        const migrationResult = await migrateTrainingPlansFromLocalStorage();
+        if (migrationResult.migrated > 0) {
+          console.log(`Migrated ${migrationResult.migrated} training plans from localStorage to database`);
+        }
+      } catch (err) {
+        console.warn('Failed to migrate training plans:', err);
+        // Don't block the app if migration fails
+      }
+
       // Test Ollama connection
       const checkConnection = async () => {
         const connected = await testOllamaConnection();
@@ -368,37 +380,41 @@ const TrainingPlanPage = () => {
     setPlanData(updatedPlan);
   };
 
-  // Save plan to localStorage
-  const handleSavePlan = () => {
+  // Save plan to database
+  const handleSavePlan = async () => {
     if (!planData || !selectedPlanType) {
       alert('No plan to save');
       return;
     }
 
-    const planToSave = {
-      planType: selectedPlanType,
-      startDate: planData.startdate,
-      endDate: planData.enddate,
-      weeks: {
-        week1: planData.week1,
-        week2: planData.week2,
-        week3: planData.week3,
-        week4: planData.week4
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    try {
+      const planToSave = {
+        planType: selectedPlanType,
+        startDate: planData.startdate,
+        endDate: planData.enddate,
+        weeklyHours: weeklyHours, // Include weekly hours from state
+        weeks: {
+          week1: planData.week1,
+          week2: planData.week2,
+          week3: planData.week3,
+          week4: planData.week4
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
 
-    // Get existing plans
-    const existingPlans = JSON.parse(localStorage.getItem('trainingPlans') || '[]');
-    
-    // Add new plan
-    existingPlans.push(planToSave);
-    
-    // Save to localStorage
-    localStorage.setItem('trainingPlans', JSON.stringify(existingPlans));
-    
-    alert('Plan saved successfully!');
+      const result = await saveTrainingPlan(planToSave);
+      
+      if (result.error) {
+        alert(`Failed to save plan: ${result.error}`);
+        return;
+      }
+
+      alert('Plan saved successfully!');
+    } catch (err) {
+      console.error('Error saving plan:', err);
+      alert(`Failed to save plan: ${err.message}`);
+    }
   };
 
   if (isConnected === null) {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signIn, signUp, getCurrentUser } from '../services/auth';
+import { signIn, signUp, getCurrentUser, signOut } from '../services/auth';
 import { checkUserStravaConnection } from '../services/supabase';
 
 const AuthPage = () => {
@@ -90,6 +90,16 @@ const AuthPage = () => {
     window.location.href = authUrl;
   };
 
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      await signOut();
+      setIsAuthenticated(false);
+      setEmail('');
+      setPassword('');
+      setError(null);
+    }
+  };
+
   return (
     <div className="auth-page">
       <div className="auth-container">
@@ -173,6 +183,13 @@ const AuthPage = () => {
               className="connect-button"
             >
               Connect with Strava
+            </button>
+            <button
+              onClick={handleLogout}
+              className="logout-button"
+              style={{ marginTop: '1rem' }}
+            >
+              Logout
             </button>
           </div>
         )}

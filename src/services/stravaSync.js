@@ -190,6 +190,220 @@ export const syncActivities = async (athleteId, stravaId, options = {}) => {
 };
 
 /**
+ * Check if this is the first connection (athlete has no activities in database)
+ * @param {number} athleteId - UUID of the athlete
+ * @returns {Promise<boolean>}
+ */
+export const checkIfFirstConnection = async (athleteId) => {
+  try {
+    const { data, error } = await supabase
+      .from('activities')
+      .select('id')
+      .eq('athlete_id', athleteId)
+      .limit(1)
+      .single();
+
+    // If no data or error (not found), it's first connection
+    return error?.code === 'PGRST116' || !data;
+  } catch (err) {
+    console.error('Error checking first connection:', err);
+    // On error, assume it's not first connection to be safe
+    return false;
+  }
+};
+
+/**
+ * Sync activities from a specific date range (e.g., last 6 months)
+ * Fetches activities until we reach the start date or hit max pages
+ * @param {number} athleteId - UUID of the athlete in Supabase
+ * @param {number} stravaId - Strava athlete ID
+ * @param {Date} startDate - Start date (activities before this date will be skipped)
+ * @param {Object} options - Sync options
+ * @param {number} options.perPage - Number of activities per page (default: 200)
+ * @param {number} options.maxPages - Maximum number of pages to sync (default: 20)
+ * @returns {Promise<{success: boolean, synced: number, created: number, updated: number, error?: string}>}
+ */
+export const syncActivitiesFromDateRange = async (athleteId, stravaId, startDate, options = {}) => {
+  const {
+    perPage = 200,
+    maxPages = 20
+  } = options;
+
+  let synced = 0;
+  let created = 0;
+  let updated = 0;
+  let errors = [];
+
+  try {
+    // Create sync log entry
+    const { data: syncLog, error: logError } = await supabase
+      .from('sync_logs')
+      .insert({
+        athlete_id: athleteId,
+        sync_type: 'activities',
+        status: 'in_progress',
+        started_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (logError) {
+      console.error('Failed to create sync log:', logError);
+    }
+
+    const syncLogId = syncLog?.id;
+    const startDateTimestamp = startDate.getTime();
+
+    // Fetch activities from Strava
+    let page = 1;
+    let hasMore = true;
+    let reachedStartDate = false;
+
+    while (hasMore && page <= maxPages && !reachedStartDate) {
+      try {
+        const activities = await getActivities(perPage, page);
+
+        if (!activities || activities.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        // Process each activity
+        for (const activity of activities) {
+          try {
+            // Check if activity is before start date
+            if (activity.start_date) {
+              const activityDate = new Date(activity.start_date).getTime();
+              if (activityDate < startDateTimestamp) {
+                // We've reached activities older than our date range
+                reachedStartDate = true;
+                break;
+              }
+            }
+
+            // Check if activity already exists
+            const { data: existing, error: checkError } = await supabase
+              .from('activities')
+              .select('id, synced_at')
+              .eq('strava_id', activity.id)
+              .single();
+
+            // If check fails due to RLS or other DB issues, log and skip this activity
+            if (checkError && checkError.code !== 'PGRST116') {
+              errors.push(`Failed to check activity ${activity.id}: ${checkError.message}`);
+              continue;
+            }
+
+            // Skip if exists (don't update on first sync)
+            if (existing) {
+              synced++;
+              continue;
+            }
+
+            // Prepare activity data
+            const activityData = {
+              strava_id: activity.id,
+              athlete_id: athleteId,
+              name: activity.name || null,
+              type: activity.type || null,
+              start_date: activity.start_date ? new Date(activity.start_date).toISOString() : null,
+              start_date_local: activity.start_date_local ? new Date(activity.start_date_local).toISOString() : null,
+              distance: activity.distance || null,
+              moving_time: activity.moving_time || null,
+              elapsed_time: activity.elapsed_time || null,
+              total_elevation_gain: activity.total_elevation_gain || null,
+              average_speed: activity.average_speed || null,
+              max_speed: activity.max_speed || null,
+              average_cadence: activity.average_cadence || null,
+              average_watts: activity.average_watts || null,
+              weighted_average_watts: activity.weighted_average_watts || null,
+              kilojoules: activity.kilojoules || null,
+              device_watts: activity.device_watts || null,
+              has_heartrate: activity.has_heartrate || null,
+              average_heartrate: activity.average_heartrate || null,
+              max_heartrate: activity.max_heartrate || null,
+              calories: activity.calories || null,
+              description: activity.description || null,
+              raw_data: activity, // Store full response
+              synced_at: new Date().toISOString()
+            };
+
+            // Insert new activity
+            const { error: insertError } = await supabase
+              .from('activities')
+              .insert(activityData);
+
+            if (insertError) {
+              errors.push(`Failed to insert activity ${activity.id}: ${insertError.message}`);
+            } else {
+              created++;
+              synced++;
+            }
+          } catch (activityError) {
+            errors.push(`Error processing activity ${activity.id}: ${activityError.message}`);
+          }
+        }
+
+        // If we reached the start date, stop fetching
+        if (reachedStartDate) {
+          hasMore = false;
+          break;
+        }
+
+        // If we got fewer activities than perPage, we've reached the end
+        if (activities.length < perPage) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } catch (pageError) {
+        errors.push(`Error fetching page ${page}: ${pageError.message}`);
+        hasMore = false;
+      }
+    }
+
+    // Update sync log
+    const status = errors.length > 0 && synced === 0 ? 'error' : errors.length > 0 ? 'partial' : 'success';
+    
+    if (syncLogId) {
+      await supabase
+        .from('sync_logs')
+        .update({
+          status,
+          activities_synced: synced,
+          activities_created: created,
+          activities_updated: updated,
+          error_message: errors.length > 0 ? errors.slice(0, 5).join('; ') : null,
+          completed_at: new Date().toISOString(),
+          metadata: {
+            total_errors: errors.length,
+            pages_synced: page - 1,
+            date_range_sync: true,
+            start_date: startDate.toISOString()
+          }
+        })
+        .eq('id', syncLogId);
+    }
+
+    return {
+      success: errors.length === 0 || synced > 0,
+      synced,
+      created,
+      updated,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  } catch (err) {
+    return {
+      success: false,
+      synced,
+      created,
+      updated,
+      error: err.message
+    };
+  }
+};
+
+/**
  * Get the last sync time for an athlete
  * @param {number} athleteId - UUID of the athlete
  * @returns {Promise<Date|null>}
@@ -235,11 +449,13 @@ export const shouldSync = async (athleteId, hoursThreshold = 1) => {
 
 /**
  * Auto-sync activities in the background
- * This should be called periodically (e.g., every hour)
+ * This should be called periodically (e.g., every 15 minutes)
+ * On first connection, syncs activities from last 6 months
  * @param {number} stravaId - Strava athlete ID
+ * @param {boolean} forceImmediate - Force immediate sync (skip time check)
  * @returns {Promise<{success: boolean, synced?: number, error?: string}>}
  */
-export const autoSyncActivities = async (stravaId) => {
+export const autoSyncActivities = async (stravaId, forceImmediate = false) => {
   try {
     // Check if user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -274,17 +490,36 @@ export const autoSyncActivities = async (stravaId) => {
       };
     }
 
-    // Check if sync is needed
-    const needsSync = await shouldSync(athlete.id, 1); // Sync if last sync was > 1 hour ago
-    if (!needsSync) {
-      return {
-        success: true,
-        message: 'Sync not needed yet',
-        synced: 0
-      };
+    // Check if this is the first connection
+    const isFirstConnection = await checkIfFirstConnection(athlete.id);
+    
+    if (isFirstConnection) {
+      // First connection: sync activities from last 6 months
+      console.log('First connection detected. Syncing activities from last 6 months...');
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      
+      const result = await syncActivitiesFromDateRange(athlete.id, stravaId, sixMonthsAgo, {
+        perPage: 200,
+        maxPages: 20 // Allow up to 4000 activities (should cover 6 months for most users)
+      });
+
+      return result;
     }
 
-    // Perform sync
+    // Not first connection: check if sync is needed
+    if (!forceImmediate) {
+      const needsSync = await shouldSync(athlete.id, 0.25); // Sync if last sync was > 15 minutes ago
+      if (!needsSync) {
+        return {
+          success: true,
+          message: 'Sync not needed yet',
+          synced: 0
+        };
+      }
+    }
+
+    // Perform regular sync (recent activities only)
     const result = await syncActivities(athlete.id, stravaId, {
       perPage: 200,
       maxPages: 5, // Sync last 1000 activities

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { exchangeCodeForToken } from '../services/stravaApi';
+import { exchangeCodeForToken, getStravaAthleteId } from '../services/stravaApi';
 import { getCurrentUser } from '../services/auth';
+import { autoSyncActivities } from '../services/stravaSync';
 
 const CallbackPage = () => {
   const navigate = useNavigate();
@@ -36,6 +37,25 @@ const CallbackPage = () => {
         }
 
         await exchangeCodeForToken(code);
+        
+        // Trigger immediate sync after successful connection
+        // This will sync 6 months of activities on first connection
+        const stravaId = getStravaAthleteId();
+        if (stravaId) {
+          console.log('Triggering immediate sync after Strava connection...');
+          // Run sync in background (don't wait for it to complete)
+          autoSyncActivities(stravaId, true).then((result) => {
+            if (result.success) {
+              console.log(`✅ Initial sync completed: ${result.synced} activities synced`);
+            } else {
+              console.warn('Initial sync had issues:', result.error);
+            }
+          }).catch((err) => {
+            console.error('Error during initial sync:', err);
+            // Don't block navigation on sync error
+          });
+        }
+        
         // Redirect to data page on success
         navigate('/data');
       } catch (err) {

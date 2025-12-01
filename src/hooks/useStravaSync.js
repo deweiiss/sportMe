@@ -7,14 +7,14 @@ import { getAccessToken } from '../services/stravaApi';
  * Custom hook for automatic Strava activity syncing
  * 
  * @param {Object} options - Sync options
- * @param {number} options.intervalMinutes - Sync interval in minutes (default: 60)
+ * @param {number} options.intervalMinutes - Sync interval in minutes (default: 15)
  * @param {boolean} options.enabled - Enable/disable auto-sync (default: true)
  * @param {Function} options.onSyncComplete - Callback when sync completes
  * @param {Function} options.onSyncError - Callback when sync fails
  */
 export const useStravaSync = (options = {}) => {
   const {
-    intervalMinutes = 60,
+    intervalMinutes = 15,
     enabled = true,
     onSyncComplete,
     onSyncError

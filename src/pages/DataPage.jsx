@@ -79,6 +79,7 @@ const DataPage = () => {
   const [error, setError] = useState(null);
   const [savedPlans, setSavedPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [displayCount, setDisplayCount] = useState(10); // Start with 10 activities
   
   // Initialize date range to current week
   const weekRange = getCurrentWeekRange();
@@ -88,10 +89,10 @@ const DataPage = () => {
   // Track if we've seen RLS errors to disable sync
   const [hasRLSError, setHasRLSError] = useState(false);
 
-  // Enable automatic Strava sync in the background (every 60 minutes)
+  // Enable automatic Strava sync in the background (every 15 minutes)
   // Disable if RLS errors are detected
   useStravaSync({
-    intervalMinutes: 60,
+    intervalMinutes: 15,
     enabled: !hasRLSError, // Disable sync if RLS errors detected
     onSyncComplete: (result) => {
       if (result.synced > 0) {
@@ -377,14 +378,19 @@ const DataPage = () => {
     }
   };
 
+  const handleShowMore = () => {
+    setDisplayCount(prevCount => prevCount + 10);
+  };
+
   // Filter activities by date range for stats
   const filteredActivities = filterActivitiesByDateRange(activities, startDate, endDate);
   
   // Calculate stats from filtered activities
   const stats = calculateStats(filteredActivities);
   
-  // Get last 100 activities for display
-  const displayActivities = activities.slice(0, 100);
+  // Get activities for display (paginated)
+  const displayActivities = activities.slice(0, displayCount);
+  const hasMoreActivities = activities.length > displayCount;
 
   if (loading) {
     return (
@@ -542,7 +548,7 @@ const DataPage = () => {
 
         {/* Activities List Section */}
         <div className="activities-section">
-          <h2>Last 100 Activities</h2>
+          <h2>Your Activities</h2>
           {displayActivities.length === 0 ? (
             <div className="no-activities">
               <p>No activities found.</p>
@@ -550,7 +556,7 @@ const DataPage = () => {
           ) : (
             <div className="activities-list">
               <div className="activities-count">
-                Showing {displayActivities.length} {displayActivities.length === 1 ? 'activity' : 'activities'}
+                Showing {displayActivities.length} of {activities.length} {activities.length === 1 ? 'activity' : 'activities'}
               </div>
               {displayActivities.map((activity) => (
                 <div key={activity.id} className="activity-card">
@@ -594,6 +600,26 @@ const DataPage = () => {
                   </div>
                 </div>
               ))}
+              {hasMoreActivities && (
+                <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                  <button
+                    onClick={handleShowMore}
+                    className="show-more-button"
+                    style={{
+                      padding: '0.75rem 2rem',
+                      fontSize: '1rem',
+                      backgroundColor: '#007bff',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
+                  >
+                    Show More
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

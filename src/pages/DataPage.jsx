@@ -6,7 +6,6 @@ import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } fr
 import { getActivitiesFromSupabase, deleteUserStravaData, getTrainingPlans, saveTrainingPlan, deleteTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
 import { signOut } from '../services/auth';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
-import { useStravaSync } from '../hooks/useStravaSync';
 
 // Helper function to get current week range (Monday-Sunday)
 const getCurrentWeekRange = () => {
@@ -86,29 +85,8 @@ const DataPage = () => {
   const [startDate, setStartDate] = useState(weekRange.start);
   const [endDate, setEndDate] = useState(weekRange.end);
 
-  // Track if we've seen RLS errors to disable sync
+  // Track if we've seen RLS errors
   const [hasRLSError, setHasRLSError] = useState(false);
-
-  // Enable automatic Strava sync in the background (every 15 minutes)
-  // Disable if RLS errors are detected
-  useStravaSync({
-    intervalMinutes: 15,
-    enabled: !hasRLSError, // Disable sync if RLS errors detected
-    onSyncComplete: (result) => {
-      if (result.synced > 0) {
-        console.log(`Background sync completed: ${result.synced} activities synced`);
-        setHasRLSError(false); // Re-enable if sync succeeds
-      }
-    },
-    onSyncError: (error) => {
-      console.warn('Background sync error:', error);
-      // Check if it's an RLS/policy error
-      if (error && (error.includes('PGRST116') || error.includes('permission') || error.includes('policy'))) {
-        setHasRLSError(true);
-        console.warn('RLS policy error detected. Sync disabled. Please run migration 002_add_missing_rls_policies.sql');
-      }
-    }
-  });
 
   useEffect(() => {
     let isMounted = true; // Flag to prevent state updates if component unmounts
@@ -154,7 +132,7 @@ const DataPage = () => {
           }
           
           // Background sync will handle saving to Supabase automatically
-          // via the useStravaSync hook
+          // via the useStravaSync hook in MainLayout
         }
       } catch (err) {
         if (isMounted) {

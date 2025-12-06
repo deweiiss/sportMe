@@ -3,7 +3,6 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { getActivitiesFromSupabase } from '../services/supabase';
 import { getActivities, getStravaAthleteId } from '../services/stravaApi';
-import { useStravaSync } from '../hooks/useStravaSync';
 
 // Helper function to get current week range (Monday-Sunday)
 const getCurrentWeekRange = () => {
@@ -75,27 +74,8 @@ const StatisticsPage = () => {
   const [startDate, setStartDate] = useState(weekRange.start);
   const [endDate, setEndDate] = useState(weekRange.end);
 
-  // Track if we've seen RLS errors to disable sync
+  // Track if we've seen RLS errors
   const [hasRLSError, setHasRLSError] = useState(false);
-
-  // Enable automatic Strava sync in the background (every 15 minutes)
-  useStravaSync({
-    intervalMinutes: 15,
-    enabled: !hasRLSError,
-    onSyncComplete: (result) => {
-      if (result.synced > 0) {
-        console.log(`Background sync completed: ${result.synced} activities synced`);
-        setHasRLSError(false);
-      }
-    },
-    onSyncError: (error) => {
-      console.warn('Background sync error:', error);
-      if (error && (error.includes('PGRST116') || error.includes('permission') || error.includes('policy'))) {
-        setHasRLSError(true);
-        console.warn('RLS policy error detected. Sync disabled.');
-      }
-    }
-  });
 
   useEffect(() => {
     let isMounted = true;

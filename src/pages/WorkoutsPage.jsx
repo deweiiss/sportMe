@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getActivitiesFromSupabase } from '../services/supabase';
 import { getActivities, getStravaAthleteId } from '../services/stravaApi';
-import { useStravaSync } from '../hooks/useStravaSync';
 import { autoSyncActivities } from '../services/stravaSync';
 
 const WorkoutsPage = () => {
@@ -11,29 +10,8 @@ const WorkoutsPage = () => {
   const [error, setError] = useState(null);
   const [displayCount, setDisplayCount] = useState(10);
 
-  // Track if we've seen RLS errors to disable sync
+  // Track if we've seen RLS errors
   const [hasRLSError, setHasRLSError] = useState(false);
-
-  // Enable automatic Strava sync in the background (every 15 minutes)
-  useStravaSync({
-    intervalMinutes: 15,
-    enabled: !hasRLSError,
-    onSyncComplete: (result) => {
-      if (result.synced > 0) {
-        console.log(`Background sync completed: ${result.synced} activities synced`);
-        setHasRLSError(false);
-        // Refresh activities after sync
-        fetchActivities();
-      }
-    },
-    onSyncError: (error) => {
-      console.warn('Background sync error:', error);
-      if (error && (error.includes('PGRST116') || error.includes('permission') || error.includes('policy'))) {
-        setHasRLSError(true);
-        console.warn('RLS policy error detected. Sync disabled.');
-      }
-    }
-  });
 
   const fetchActivities = async () => {
     try {

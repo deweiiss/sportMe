@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { autoSyncActivities } from '../services/stravaSync';
 import { getStravaAthleteId } from '../services/stravaApi';
 import { getAccessToken } from '../services/stravaApi';
+
+// Global sync lock to prevent multiple instances from syncing simultaneously
+let globalSyncInProgress = false;
 
 /**
  * Custom hook for automatic Strava activity syncing
@@ -22,10 +25,17 @@ export const useStravaSync = (options = {}) => {
 
   const intervalRef = useRef(null);
   const isSyncingRef = useRef(false);
+  const callbacksRef = useRef({ onSyncComplete, onSyncError });
 
-  const performSync = async () => {
-    // Prevent concurrent syncs
-    if (isSyncingRef.current) {
+  // Update callbacks ref when they change (but don't trigger effect)
+  useEffect(() => {
+    callbacksRef.current = { onSyncComplete, onSyncError };
+  }, [onSyncComplete, onSyncError]);
+
+  const performSync = useCallback(async () => {
+    // Prevent concurrent syncs (both local and global)
+    if (isSyncingRef.current || globalSyncInProgress) {
+      console.log('Sync already in progress, skipping...');
       return;
     }
 
@@ -39,35 +49,39 @@ export const useStravaSync = (options = {}) => {
       return; // No athlete ID
     }
 
+    // Set both local and global locks
     isSyncingRef.current = true;
+    globalSyncInProgress = true;
 
     try {
       const result = await autoSyncActivities(stravaId);
       
       if (result.success) {
-        if (onSyncComplete) {
-          onSyncComplete(result);
+        if (callbacksRef.current.onSyncComplete) {
+          callbacksRef.current.onSyncComplete(result);
         }
         if (result.synced > 0) {
           console.log(`✅ Synced ${result.synced} activities (${result.created} new, ${result.updated} updated)`);
         }
       } else {
-        if (onSyncError) {
-          onSyncError(result.error);
+        if (callbacksRef.current.onSyncError) {
+          callbacksRef.current.onSyncError(result.error);
         } else {
           console.warn('Sync completed with errors:', result.error);
         }
       }
     } catch (error) {
-      if (onSyncError) {
-        onSyncError(error.message);
+      if (callbacksRef.current.onSyncError) {
+        callbacksRef.current.onSyncError(error.message);
       } else {
         console.error('Sync error:', error);
       }
     } finally {
+      // Release both locks
       isSyncingRef.current = false;
+      globalSyncInProgress = false;
     }
-  };
+  }, []); // Empty deps - uses refs for callbacks and external functions
 
   useEffect(() => {
     if (!enabled) {
@@ -91,7 +105,7 @@ export const useStravaSync = (options = {}) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [enabled, intervalMinutes]);
+  }, [enabled, intervalMinutes, performSync]);
 
   // Manual sync function
   const syncNow = () => {

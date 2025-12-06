@@ -4,7 +4,6 @@ import CallbackPage from './pages/CallbackPage';
 import DataPage from './pages/DataPage';
 import TrainingPlanPage from './pages/TrainingPlanPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import './App.css';
 
 function App() {
   return (

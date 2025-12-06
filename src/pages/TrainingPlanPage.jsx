@@ -5,7 +5,6 @@ import { getAccessToken } from '../services/stravaApi';
 import { getCurrentUser, signOut } from '../services/auth';
 import { saveTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
-import './TrainingPlanPage.css';
 
 // Training plan prompts - functions that take weeklyHours parameter
 const TRAINING_PROMPTS = {
@@ -419,10 +418,10 @@ const TrainingPlanPage = () => {
 
   if (isConnected === null) {
     return (
-      <div className="training-plan-page">
-        <div className="training-container">
-          <div className="loading-spinner"></div>
-          <p>Checking Ollama connection...</p>
+      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
+        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+          <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-center text-gray-700 dark:text-gray-300">Checking Ollama connection...</p>
         </div>
       </div>
     );
@@ -430,20 +429,26 @@ const TrainingPlanPage = () => {
 
   if (!isConnected) {
     return (
-      <div className="training-plan-page">
-        <div className="training-container">
-          <div className="error-message">
-            <h2>Ollama Not Connected</h2>
-            <p>Cannot connect to Ollama. Please make sure:</p>
-            <ul>
+      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
+        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+          <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 mb-4">
+            <h2 className="mt-0 text-red-600 dark:text-red-400 text-2xl font-semibold mb-4">Ollama Not Connected</h2>
+            <p className="my-4">Cannot connect to Ollama. Please make sure:</p>
+            <ul className="my-4 pl-6">
               <li>Ollama is installed and running on your machine</li>
               <li>Ollama is running on the default port (11434)</li>
-              <li>You have at least one model downloaded (e.g., <code>ollama pull llama3</code>)</li>
+              <li>You have at least one model downloaded (e.g., <code className="bg-white dark:bg-gray-800 px-1 py-0.5 rounded font-mono text-red-600 dark:text-red-400">ollama pull llama3</code>)</li>
             </ul>
-            <button onClick={() => window.location.reload()} className="retry-button">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="py-3 px-6 mr-2 mt-2 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Retry Connection
             </button>
-            <button onClick={() => navigate('/data')} className="back-button">
+            <button 
+              onClick={() => navigate('/data')} 
+              className="py-3 px-6 mr-2 mt-2 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Back to Activities
             </button>
           </div>
@@ -455,31 +460,37 @@ const TrainingPlanPage = () => {
   // Show plan selection if no plan is selected or generated
   if (!selectedPlanType || !response) {
     return (
-      <div className="training-plan-page">
-        <div className="training-container">
-        <div className="header">
-          <h1>Generate Training Plan</h1>
-          <div className="header-actions">
-            <button onClick={() => navigate('/data')} className="back-button">
+      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
+        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+        <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 dark:border-gray-700 flex-wrap gap-4">
+          <h1 className="m-0 text-gray-900 dark:text-white text-3xl">Generate Training Plan</h1>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => navigate('/data')} 
+              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Back to Activities
             </button>
-            <button onClick={handleLogout} className="logout-button">
+            <button 
+              onClick={handleLogout} 
+              className="py-3 px-6 bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Logout
             </button>
           </div>
         </div>
 
-          <p className="instruction-text">
+          <p className="text-center text-gray-600 dark:text-gray-300 text-lg mb-8">
             Select a training plan type to generate a personalized plan.
           </p>
 
-          <div className="weekly-time-selector">
-            <label htmlFor="weekly-hours">Wöchentlich verfügbare Zeit:</label>
+          <div className="flex items-center justify-center gap-4 mb-8 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+            <label htmlFor="weekly-hours" className="font-semibold text-gray-900 dark:text-white text-base">Wöchentlich verfügbare Zeit:</label>
             <select
               id="weekly-hours"
               value={weeklyHours}
               onChange={(e) => setWeeklyHours(e.target.value)}
-              className="weekly-hours-select"
+              className="px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white cursor-pointer min-w-[200px] transition-colors focus:outline-none focus:border-primary-start disabled:opacity-60 disabled:cursor-not-allowed"
               disabled={loading}
             >
               <option value="3-5h">3-5 Stunden</option>
@@ -489,48 +500,48 @@ const TrainingPlanPage = () => {
             </select>
           </div>
 
-          <div className="plan-options">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
             <button
               onClick={() => handleGeneratePlan('ftp')}
-              className="plan-card"
+              className="bg-gradient-to-br from-primary-start to-primary-end text-white border-none rounded-xl p-8 cursor-pointer transition-all text-center flex flex-col items-center min-h-[250px] hover:-translate-y-2 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
               disabled={loading}
             >
-              <div className="plan-icon">⚡</div>
-              <h2>FTP Improvement</h2>
-              <p>Generate a training plan focused on improving your Functional Threshold Power</p>
+              <div className="text-5xl mb-4">⚡</div>
+              <h2 className="m-0 mb-2 text-2xl text-white">FTP Improvement</h2>
+              <p className="m-0 text-base opacity-90 leading-relaxed">Generate a training plan focused on improving your Functional Threshold Power</p>
             </button>
 
             <button
               onClick={() => handleGeneratePlan('base')}
-              className="plan-card"
+              className="bg-gradient-to-br from-primary-start to-primary-end text-white border-none rounded-xl p-8 cursor-pointer transition-all text-center flex flex-col items-center min-h-[250px] hover:-translate-y-2 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
               disabled={loading}
             >
-              <div className="plan-icon">🏔️</div>
-              <h2>Base</h2>
-              <p>Generate a base building training plan for endurance and aerobic capacity</p>
+              <div className="text-5xl mb-4">🏔️</div>
+              <h2 className="m-0 mb-2 text-2xl text-white">Base</h2>
+              <p className="m-0 text-base opacity-90 leading-relaxed">Generate a base building training plan for endurance and aerobic capacity</p>
             </button>
 
             <button
               onClick={() => handleGeneratePlan('vo2max')}
-              className="plan-card"
+              className="bg-gradient-to-br from-primary-start to-primary-end text-white border-none rounded-xl p-8 cursor-pointer transition-all text-center flex flex-col items-center min-h-[250px] hover:-translate-y-2 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
               disabled={loading}
             >
-              <div className="plan-icon">🔥</div>
-              <h2>VO2max</h2>
-              <p>Generate a training plan focused on improving your maximum oxygen uptake</p>
+              <div className="text-5xl mb-4">🔥</div>
+              <h2 className="m-0 mb-2 text-2xl text-white">VO2max</h2>
+              <p className="m-0 text-base opacity-90 leading-relaxed">Generate a training plan focused on improving your maximum oxygen uptake</p>
             </button>
           </div>
 
           {loading && (
-            <div className="loading-overlay">
-              <div className="loading-spinner"></div>
-              <p>Generating your training plan...</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-700 dark:text-gray-300">Generating your training plan...</p>
             </div>
           )}
 
           {error && (
-            <div className="error-message">
-              <p>{error}</p>
+            <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 mb-4">
+              <p className="my-4">{error}</p>
             </div>
           )}
         </div>
@@ -540,47 +551,62 @@ const TrainingPlanPage = () => {
 
   // Show generated plan
   return (
-    <div className="training-plan-page">
-      <div className="training-container">
-        <div className="header">
-          <h1>
+    <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
+      <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+        <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 dark:border-gray-700 flex-wrap gap-4">
+          <h1 className="m-0 text-gray-900 dark:text-white text-3xl">
             {selectedPlanType === 'ftp' && 'FTP Improvement Plan'}
             {selectedPlanType === 'base' && 'Base Building Plan'}
             {selectedPlanType === 'vo2max' && 'VO2max Training Plan'}
           </h1>
-          <div className="header-actions">
-            <button onClick={handleBack} className="back-button">
+          <div className="flex gap-4">
+            <button 
+              onClick={handleBack} 
+              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Back to Options
             </button>
-            <button onClick={() => navigate('/data')} className="back-button">
+            <button 
+              onClick={() => navigate('/data')} 
+              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Back to Activities
             </button>
-            <button onClick={handleLogout} className="logout-button">
+            <button 
+              onClick={handleLogout} 
+              className="py-3 px-6 bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Logout
             </button>
           </div>
         </div>
 
         {loading && (
-          <div className="loading-overlay">
-            <div className="loading-spinner"></div>
-            <p>Generating your training plan...</p>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-700 dark:text-gray-300">Generating your training plan...</p>
           </div>
         )}
 
         {error && !planData && (
-          <div className="error-message">
-            <p>{error}</p>
-            <button onClick={handleBack} className="retry-button">
+          <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 mb-4">
+            <p className="my-4">{error}</p>
+            <button 
+              onClick={handleBack} 
+              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+            >
               Try Again
             </button>
           </div>
         )}
 
         {planData ? (
-          <div className="plan-calendar-container">
-            <div className="plan-actions">
-              <button onClick={handleSavePlan} className="save-button">
+          <div className="mt-8">
+            <div className="flex gap-4 mb-6 justify-end">
+              <button 
+                onClick={handleSavePlan} 
+                className="py-3 px-6 bg-green-600 hover:bg-green-700 text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+              >
                 Save Plan
               </button>
               <button
@@ -588,14 +614,14 @@ const TrainingPlanPage = () => {
                   navigator.clipboard.writeText(response);
                   alert('Copied to clipboard!');
                 }}
-                className="copy-button"
+                className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
               >
                 Copy Raw Response
               </button>
             </div>
             {error && (
-              <div className="error-message" style={{ marginBottom: '1rem' }}>
-                <p>{error}</p>
+              <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 mb-4">
+                <p className="my-4">{error}</p>
               </div>
             )}
             <TrainingPlanCalendar
@@ -605,20 +631,20 @@ const TrainingPlanPage = () => {
             />
           </div>
         ) : response && (
-          <div className="response-container">
-            <div className="response-header">
+          <div className="mt-8 border-t-2 border-gray-200 dark:border-gray-700 pt-8">
+            <div className="flex justify-end mb-4">
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(response);
                   alert('Copied to clipboard!');
                 }}
-                className="copy-button"
+                className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
               >
                 Copy Plan
               </button>
             </div>
-            <div className="response-content">
-              <pre>{response}</pre>
+            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-6 max-h-[70vh] overflow-y-auto">
+              <pre className="m-0 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-gray-900 dark:text-white">{response}</pre>
             </div>
           </div>
         )}

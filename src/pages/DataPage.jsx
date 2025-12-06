@@ -394,10 +394,10 @@ const DataPage = () => {
 
   if (loading) {
     return (
-      <div className="data-page">
-        <div className="data-container">
-          <div className="loading-spinner"></div>
-          <p>Loading your activities...</p>
+      <div className="min-h-screen p-8 bg-gray-100 dark:bg-gray-900">
+        <div className="max-w-6xl mx-auto">
+          <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-center text-gray-700 dark:text-gray-300">Loading your activities...</p>
         </div>
       </div>
     );
@@ -405,12 +405,15 @@ const DataPage = () => {
 
   if (error) {
     return (
-      <div className="data-page">
-        <div className="data-container">
-          <div className="error-message">
-            <h2>Error</h2>
-            <p>{error}</p>
-            <button onClick={() => window.location.reload()} className="retry-button">
+      <div className="min-h-screen p-8 bg-gray-100 dark:bg-gray-900">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
+            <h2 className="text-red-600 dark:text-red-400 text-2xl font-semibold mb-4 mt-0">Error</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-primary-start hover:bg-primary-end text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-colors"
+            >
               Retry
             </button>
           </div>
@@ -420,28 +423,37 @@ const DataPage = () => {
   }
 
   return (
-    <div className="data-page">
-      <div className="data-container">
-        <div className="header">
-          <h1>Your Activities</h1>
-          <div className="header-actions">
-            <button onClick={() => navigate('/training')} className="training-button">
+    <div className="min-h-screen p-8 bg-gray-100 dark:bg-gray-900">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+          <h1 className="text-4xl m-0 text-gray-900 dark:text-white">Your Activities</h1>
+          <div className="flex gap-4 flex-wrap">
+            <button 
+              onClick={() => navigate('/training')} 
+              className="bg-gradient-to-br from-primary-start to-primary-end text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-all hover:-translate-y-0.5 hover:shadow-lg"
+            >
               Generate Training Plan
             </button>
-            <button onClick={handleDisconnect} className="disconnect-button">
+            <button 
+              onClick={handleDisconnect} 
+              className="bg-red-600 hover:bg-red-700 text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-colors"
+            >
               Disconnect Strava
             </button>
-            <button onClick={handleLogout} className="logout-button">
+            <button 
+              onClick={handleLogout} 
+              className="bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-colors"
+            >
               Logout
             </button>
           </div>
         </div>
 
         {/* Date Picker Section */}
-        <div className="date-picker-section">
-          <div className="date-picker-container">
-            <div className="date-picker-group">
-              <label htmlFor="start-date">Start Date:</label>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mb-8 shadow-md">
+          <div className="flex gap-8 items-end flex-wrap">
+            <div className="flex flex-col gap-2 flex-1 min-w-[200px]">
+              <label htmlFor="start-date" className="font-semibold text-gray-600 dark:text-gray-300 text-sm">Start Date:</label>
               <DatePicker
                 id="start-date"
                 selected={startDate}
@@ -451,12 +463,12 @@ const DataPage = () => {
                 endDate={endDate}
                 maxDate={endDate}
                 dateFormat="MMM dd, yyyy"
-                className="date-picker-input"
+                className="w-full px-3 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-base transition-colors focus:outline-none focus:border-primary-start dark:bg-gray-700 dark:text-white"
                 calendarStartDay={1}
               />
             </div>
-            <div className="date-picker-group">
-              <label htmlFor="end-date">End Date:</label>
+            <div className="flex flex-col gap-2 flex-1 min-w-[200px]">
+              <label htmlFor="end-date" className="font-semibold text-gray-600 dark:text-gray-300 text-sm">End Date:</label>
               <DatePicker
                 id="end-date"
                 selected={endDate}
@@ -466,7 +478,7 @@ const DataPage = () => {
                 endDate={endDate}
                 minDate={startDate}
                 dateFormat="MMM dd, yyyy"
-                className="date-picker-input"
+                className="w-full px-3 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-base transition-colors focus:outline-none focus:border-primary-start dark:bg-gray-700 dark:text-white"
                 calendarStartDay={1}
               />
             </div>
@@ -474,49 +486,49 @@ const DataPage = () => {
         </div>
 
         {/* Stats Section */}
-        <div className="stats-section">
-          <h2>Statistics</h2>
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Distance</div>
-              <div className="stat-value">{formatDistance(stats.totalDistance)}</div>
+        <div className="mb-12">
+          <h2 className="text-3xl m-0 mb-6 text-gray-900 dark:text-white">Statistics</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-lg text-center">
+              <div className="text-sm text-gray-600 dark:text-gray-300 font-semibold mb-2 uppercase tracking-wide">Total Distance</div>
+              <div className="text-3xl font-bold text-primary-start m-0">{formatDistance(stats.totalDistance)}</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Total Elevation Gain</div>
-              <div className="stat-value">{stats.totalElevationGain.toFixed(0)} m</div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-lg text-center">
+              <div className="text-sm text-gray-600 dark:text-gray-300 font-semibold mb-2 uppercase tracking-wide">Total Elevation Gain</div>
+              <div className="text-3xl font-bold text-primary-start m-0">{stats.totalElevationGain.toFixed(0)} m</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Total Time</div>
-              <div className="stat-value">{formatDuration(stats.totalTime)}</div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-lg text-center">
+              <div className="text-sm text-gray-600 dark:text-gray-300 font-semibold mb-2 uppercase tracking-wide">Total Time</div>
+              <div className="text-3xl font-bold text-primary-start m-0">{formatDuration(stats.totalTime)}</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-label">Number of Activities</div>
-              <div className="stat-value">{stats.activityCount}</div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-lg text-center">
+              <div className="text-sm text-gray-600 dark:text-gray-300 font-semibold mb-2 uppercase tracking-wide">Number of Activities</div>
+              <div className="text-3xl font-bold text-primary-start m-0">{stats.activityCount}</div>
             </div>
           </div>
         </div>
 
         {/* Saved Training Plans Section */}
-        <div className="saved-plans-section">
-          <h2>Saved Training Plans</h2>
+        <div className="mb-12 mt-8">
+          <h2 className="text-3xl m-0 mb-6 text-gray-900 dark:text-white">Saved Training Plans</h2>
           {savedPlans.length === 0 ? (
-            <div className="no-plans">
-              <p>No saved training plans. Generate a plan to get started!</p>
+            <div className="text-center py-12 px-8 bg-white dark:bg-gray-800 rounded-xl text-gray-600 dark:text-gray-300 shadow-md">
+              <p className="text-lg m-0">No saved training plans. Generate a plan to get started!</p>
             </div>
           ) : (
-            <div className="plans-list">
+            <div className="flex flex-col gap-6">
               {savedPlans.map((plan, index) => (
-                <div key={index} className="plan-card-item">
-                  <div className="plan-card-header">
-                    <h3>{getPlanTypeLabel(plan.planType)}</h3>
-                    <span className="plan-date-range">
+                <div key={index} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                  <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                    <h3 className="m-0 text-xl text-gray-900 dark:text-white">{getPlanTypeLabel(plan.planType)}</h3>
+                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
                       {formatPlanDate(plan.startDate)} - {formatPlanDate(plan.endDate)}
                     </span>
                   </div>
-                  <div className="plan-card-actions">
+                  <div className="flex gap-4 mb-4">
                     <button 
                       onClick={() => handleViewPlan(plan)}
-                      className="view-plan-button"
+                      className="bg-primary-start hover:bg-primary-end text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
                     >
                       {selectedPlan && 
                        selectedPlan.id === plan.id 
@@ -525,14 +537,14 @@ const DataPage = () => {
                     </button>
                     <button 
                       onClick={() => handleDeletePlan(plan)}
-                      className="delete-plan-button"
+                      className="bg-red-600 hover:bg-red-700 text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
                     >
                       Delete
                     </button>
                   </div>
                   {selectedPlan && 
                    selectedPlan.id === plan.id && (
-                    <div className="plan-calendar-view">
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                       <TrainingPlanCalendar
                         planData={selectedPlan.calendarData}
                         onPlanChange={handlePlanChange}
@@ -547,74 +559,66 @@ const DataPage = () => {
         </div>
 
         {/* Activities List Section */}
-        <div className="activities-section">
-          <h2>Your Activities</h2>
+        <div className="mt-8">
+          <h2 className="text-3xl m-0 mb-6 text-gray-900 dark:text-white">Your Activities</h2>
           {displayActivities.length === 0 ? (
-            <div className="no-activities">
-              <p>No activities found.</p>
+            <div className="text-center py-16 px-8 bg-white dark:bg-gray-800 rounded-xl text-gray-600 dark:text-gray-300 shadow-md">
+              <p className="text-xl m-0">No activities found.</p>
             </div>
           ) : (
-            <div className="activities-list">
-              <div className="activities-count">
+            <div>
+              <div className="text-lg text-gray-600 dark:text-gray-300 mb-6 font-medium">
                 Showing {displayActivities.length} of {activities.length} {activities.length === 1 ? 'activity' : 'activities'}
               </div>
-              {displayActivities.map((activity) => (
-                <div key={activity.id} className="activity-card">
-                  <div className="activity-header">
-                    <h3>{activity.name || 'Untitled Activity'}</h3>
-                    <span className="activity-type">{activity.type}</span>
-                  </div>
-                  <div className="activity-details">
-                    <div className="detail-item">
-                      <span className="detail-label">Date:</span>
-                      <span className="detail-value">{formatDate(activity.start_date_local)}</span>
+              <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {displayActivities.map((activity) => (
+                  <div key={activity.id} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-lg">
+                    <div className="flex justify-between items-start mb-4 gap-4">
+                      <h3 className="m-0 text-xl text-gray-900 dark:text-white flex-1">{activity.name || 'Untitled Activity'}</h3>
+                      <span className="bg-primary-start text-white py-1 px-3 rounded-full text-xs font-semibold whitespace-nowrap">{activity.type}</span>
                     </div>
-                    {activity.distance > 0 && (
-                      <div className="detail-item">
-                        <span className="detail-label">Distance:</span>
-                        <span className="detail-value">{formatDistance(activity.distance)}</span>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                        <span className="font-semibold text-gray-600 dark:text-gray-300">Date:</span>
+                        <span className="text-gray-900 dark:text-white font-medium">{formatDate(activity.start_date_local)}</span>
                       </div>
-                    )}
-                    {activity.moving_time > 0 && (
-                      <div className="detail-item">
-                        <span className="detail-label">Duration:</span>
-                        <span className="detail-value">{formatDuration(activity.moving_time)}</span>
-                      </div>
-                    )}
-                    {activity.average_speed > 0 && (
-                      <div className="detail-item">
-                        <span className="detail-label">Avg Speed:</span>
-                        <span className="detail-value">
-                          {(activity.average_speed * 3.6).toFixed(2)} km/h
-                        </span>
-                      </div>
-                    )}
-                    {activity.total_elevation_gain > 0 && (
-                      <div className="detail-item">
-                        <span className="detail-label">Elevation Gain:</span>
-                        <span className="detail-value">
-                          {activity.total_elevation_gain.toFixed(0)} m
-                        </span>
-                      </div>
-                    )}
+                      {activity.distance > 0 && (
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                          <span className="font-semibold text-gray-600 dark:text-gray-300">Distance:</span>
+                          <span className="text-gray-900 dark:text-white font-medium">{formatDistance(activity.distance)}</span>
+                        </div>
+                      )}
+                      {activity.moving_time > 0 && (
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                          <span className="font-semibold text-gray-600 dark:text-gray-300">Duration:</span>
+                          <span className="text-gray-900 dark:text-white font-medium">{formatDuration(activity.moving_time)}</span>
+                        </div>
+                      )}
+                      {activity.average_speed > 0 && (
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                          <span className="font-semibold text-gray-600 dark:text-gray-300">Avg Speed:</span>
+                          <span className="text-gray-900 dark:text-white font-medium">
+                            {(activity.average_speed * 3.6).toFixed(2)} km/h
+                          </span>
+                        </div>
+                      )}
+                      {activity.total_elevation_gain > 0 && (
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                          <span className="font-semibold text-gray-600 dark:text-gray-300">Elevation Gain:</span>
+                          <span className="text-gray-900 dark:text-white font-medium">
+                            {activity.total_elevation_gain.toFixed(0)} m
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
               {hasMoreActivities && (
-                <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                <div className="text-center mt-8">
                   <button
                     onClick={handleShowMore}
-                    className="show-more-button"
-                    style={{
-                      padding: '0.75rem 2rem',
-                      fontSize: '1rem',
-                      backgroundColor: '#007bff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: '500'
-                    }}
+                    className="px-8 py-3 text-base bg-blue-600 hover:bg-blue-700 text-white border-none rounded cursor-pointer font-medium transition-colors"
                   >
                     Show More
                   </button>

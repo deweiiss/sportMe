@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import './TrainingPlanCalendar.css';
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -156,43 +155,43 @@ const TrainingPlanCalendar = ({ planData, onPlanChange, planType }) => {
   };
 
   if (!planData && !weeks.week1) {
-    return <div className="calendar-loading">Loading calendar...</div>;
+    return <div className="text-center py-8 text-gray-600 dark:text-gray-300">Loading calendar...</div>;
   }
 
   return (
-    <div className="training-plan-calendar">
-      <div className="calendar-header">
-        <h2>{getMonthYearHeader()}</h2>
-        <div className="date-pickers">
-          <div className="date-picker-group">
-            <label>Start Date:</label>
+    <div className="w-full mt-8">
+      <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200 dark:border-gray-700 flex-wrap gap-4">
+        <h2 className="m-0 text-2xl text-gray-900 dark:text-white font-semibold">{getMonthYearHeader()}</h2>
+        <div className="flex gap-6 flex-wrap">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-600 dark:text-gray-300 font-medium">Start Date:</label>
             <DatePicker
               selected={startDate}
               onChange={handleStartDateChange}
               dateFormat="MMM dd, yyyy"
-              className="date-picker-input"
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm min-w-[150px] focus:outline-none focus:border-primary-start focus:ring-2 focus:ring-primary-start/10 dark:bg-gray-700 dark:text-white"
               calendarStartDay={1}
             />
           </div>
-          <div className="date-picker-group">
-            <label>End Date:</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-600 dark:text-gray-300 font-medium">End Date:</label>
             <DatePicker
               selected={endDate}
               onChange={handleEndDateChange}
               minDate={startDate}
               dateFormat="MMM dd, yyyy"
-              className="date-picker-input"
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm min-w-[150px] focus:outline-none focus:border-primary-start focus:ring-2 focus:ring-primary-start/10 dark:bg-gray-700 dark:text-white"
               calendarStartDay={1}
             />
           </div>
         </div>
       </div>
 
-      <div className="calendar-grid">
+      <div className="flex flex-col border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800">
         {/* Day headers */}
-        <div className="calendar-day-header">
+        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-700">
           {DAY_LABELS.map((label) => (
-            <div key={label} className="day-header-cell">
+            <div key={label} className="p-3 text-center font-semibold text-sm text-gray-600 dark:text-gray-300 uppercase tracking-wide">
               {label}
             </div>
           ))}
@@ -200,7 +199,7 @@ const TrainingPlanCalendar = ({ planData, onPlanChange, planType }) => {
 
         {/* Week rows */}
         {['week1', 'week2', 'week3', 'week4'].map((weekKey, weekIndex) => (
-          <div key={weekKey} className="calendar-week">
+          <div key={weekKey} className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 last:border-0">
             {DAYS.map((dayKey, dayIndex) => {
               const workout = weeks[weekKey]?.[dayKey] || '';
               const date = getDateForDay(weekIndex, dayIndex);
@@ -212,19 +211,31 @@ const TrainingPlanCalendar = ({ planData, onPlanChange, planType }) => {
               return (
                 <div
                   key={`${weekKey}-${dayKey}`}
-                  className={`calendar-day ${isToday ? 'today' : ''} ${isDragging ? 'dragging' : ''}`}
+                  className={`min-h-[120px] border-r border-gray-200 dark:border-gray-700 p-2 flex flex-col bg-white dark:bg-gray-800 cursor-pointer transition-colors relative last:border-r-0 ${
+                    isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                  } ${
+                    isDragging ? 'opacity-50 bg-blue-100 dark:bg-blue-800/30' : ''
+                  } hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                    workout && workout.trim() !== '' && workout.toLowerCase() !== 'rest' ? 'cursor-grab active:cursor-grabbing' : ''
+                  }`}
                   draggable={workout && workout.trim() !== '' && workout.toLowerCase() !== 'rest'}
                   onDragStart={(e) => handleDragStart(e, weekKey, dayKey)}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, weekKey, dayKey)}
                   onDragEnd={handleDragEnd}
                 >
-                  <div className="day-number">{formatDate(date)}</div>
-                  <div className="day-workout">
+                  <div className={`text-sm font-medium text-gray-900 dark:text-white mb-2 inline-flex items-center justify-center w-6 h-6 rounded-full ${
+                    isToday ? 'bg-primary-start text-white font-semibold' : ''
+                  }`}>
+                    {formatDate(date)}
+                  </div>
+                  <div className="flex-1 flex flex-col overflow-hidden">
                     {workout && workout.trim() !== '' ? (
-                      <div className="workout-content">{workout}</div>
+                      <div className="text-xs leading-snug text-gray-900 dark:text-white p-1.5 bg-green-100 dark:bg-green-900/30 border-l-4 border-green-600 rounded overflow-wrap break-words max-h-20 overflow-y-auto">
+                        {workout}
+                      </div>
                     ) : (
-                      <div className="workout-empty">Rest</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 italic p-1.5">Rest</div>
                     )}
                   </div>
                 </div>

@@ -117,10 +117,10 @@ const CallbackPage = () => {
 
   if (loading) {
     return (
-      <div className="callback-page">
-        <div className="callback-container">
-          <div className="loading-spinner"></div>
-          <p>Authenticating with Strava...</p>
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center max-w-md w-full">
+          <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mx-auto mb-6"></div>
+          <p className="text-gray-700 dark:text-gray-300">Authenticating with Strava...</p>
         </div>
       </div>
     );
@@ -128,12 +128,15 @@ const CallbackPage = () => {
 
   if (error) {
     return (
-      <div className="callback-page">
-        <div className="callback-container">
-          <div className="error-message">
-            <h2>Authentication Failed</h2>
-            <p>{error}</p>
-            <button onClick={() => navigate('/')} className="retry-button">
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center max-w-md w-full">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
+            <h2 className="text-red-600 dark:text-red-400 mt-0 text-2xl font-semibold mb-4">Authentication Failed</h2>
+            <p className="text-gray-600 dark:text-gray-400 my-4">{error}</p>
+            <button 
+              onClick={() => navigate('/')} 
+              className="mt-4 bg-primary-start hover:bg-primary-end text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-colors"
+            >
               Try Again
             </button>
           </div>

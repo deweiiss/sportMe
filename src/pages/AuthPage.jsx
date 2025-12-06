@@ -101,16 +101,20 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-container">
-        <h1>SportMe</h1>
+    <div className="min-h-screen flex items-center justify-center p-8 bg-gradient-to-br from-primary-start to-primary-end">
+      <div className="bg-white/95 dark:bg-[#1a1a1a]/95 p-12 rounded-2xl shadow-2xl text-center max-w-md w-full">
+        <h1 className="text-4xl mb-4 m-0 bg-gradient-to-br from-primary-start to-primary-end bg-clip-text text-transparent">SportMe</h1>
         
         {!isAuthenticated ? (
           /* Authentication Form - shown first */
-          <div className="auth-form-section">
-            <div className="auth-tabs">
+          <div>
+            <div className="flex mb-6 border-b border-gray-200 dark:border-gray-700">
               <button
-                className={!isSignUp ? 'active' : ''}
+                className={`flex-1 py-2 px-4 font-semibold transition-colors ${
+                  !isSignUp 
+                    ? 'border-b-2 border-primary-start text-primary-start' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
                 onClick={() => {
                   setIsSignUp(false);
                   setError(null);
@@ -120,7 +124,11 @@ const AuthPage = () => {
                 Sign In
               </button>
               <button
-                className={isSignUp ? 'active' : ''}
+                className={`flex-1 py-2 px-4 font-semibold transition-colors ${
+                  isSignUp 
+                    ? 'border-b-2 border-primary-start text-primary-start' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
                 onClick={() => {
                   setIsSignUp(true);
                   setError(null);
@@ -131,9 +139,9 @@ const AuthPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="auth-form">
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="email" className="text-left font-semibold text-gray-700 dark:text-gray-300">Email</label>
                 <input
                   id="email"
                   type="email"
@@ -142,11 +150,12 @@ const AuthPage = () => {
                   required
                   disabled={loading}
                   placeholder="your@email.com"
+                  className="w-full px-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-primary-start dark:bg-gray-800 dark:text-white"
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="password" className="text-left font-semibold text-gray-700 dark:text-gray-300">Password</label>
                 <input
                   id="password"
                   type="password"
@@ -156,18 +165,19 @@ const AuthPage = () => {
                   disabled={loading}
                   placeholder="••••••••"
                   minLength={6}
+                  className="w-full px-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-primary-start dark:bg-gray-800 dark:text-white"
                 />
               </div>
 
               {error && (
-                <div className="error-message">
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400">
                   {error}
                 </div>
               )}
 
               <button
                 type="submit"
-                className="auth-submit-button"
+                className="w-full py-3 px-6 bg-gradient-to-br from-primary-start to-primary-end text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={loading}
               >
                 {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
@@ -176,18 +186,17 @@ const AuthPage = () => {
           </div>
         ) : (
           /* Strava Connection Section - shown after authentication */
-          <div className="strava-connect-section">
-            <p>Welcome! Connect your Strava account to view your workout data</p>
+          <div>
+            <p className="text-gray-600 dark:text-gray-300 mb-8 text-lg">Welcome! Connect your Strava account to view your workout data</p>
             <button
               onClick={handleConnectStrava}
-              className="connect-button"
+              className="w-full bg-gradient-to-br from-orange to-orange-light text-white border-none py-4 px-8 text-lg font-semibold rounded-lg cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
             >
               Connect with Strava
             </button>
             <button
               onClick={handleLogout}
-              className="logout-button"
-              style={{ marginTop: '1rem' }}
+              className="mt-4 w-full bg-gray-600 dark:bg-gray-700 text-white border-none py-3 px-6 rounded-lg cursor-pointer font-semibold transition-colors hover:bg-gray-700 dark:hover:bg-gray-600"
             >
               Logout
             </button>

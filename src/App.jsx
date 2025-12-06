@@ -1,9 +1,12 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import AuthPage from './pages/AuthPage';
 import CallbackPage from './pages/CallbackPage';
-import DataPage from './pages/DataPage';
+import WorkoutsPage from './pages/WorkoutsPage';
 import TrainingPlanPage from './pages/TrainingPlanPage';
+import StatisticsPage from './pages/StatisticsPage';
+import AboutMePage from './pages/AboutMePage';
 import ProtectedRoute from './components/ProtectedRoute';
+import MainLayout from './components/MainLayout';
 
 function App() {
   return (
@@ -12,10 +15,12 @@ function App() {
         <Route path="/" element={<AuthPage />} />
         <Route path="/auth/callback" element={<CallbackPage />} />
         <Route
-          path="/data"
+          path="/workouts"
           element={
             <ProtectedRoute>
-              <DataPage />
+              <MainLayout>
+                <WorkoutsPage />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -23,7 +28,40 @@ function App() {
           path="/training"
           element={
             <ProtectedRoute>
-              <TrainingPlanPage />
+              <MainLayout>
+                <TrainingPlanPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/statistics"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StatisticsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/about"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <AboutMePage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        {/* Redirect old /data route to /workouts */}
+        <Route
+          path="/data"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <WorkoutsPage />
+              </MainLayout>
             </ProtectedRoute>
           }
         />

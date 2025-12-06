@@ -46,6 +46,49 @@ export const generateTrainingPlan = async (prompt, model = null, context = null)
 };
 
 /**
+ * Send a chat message to Ollama LLM
+ * @param {Array} messageHistory - Array of previous messages in format [{ role: 'user'|'assistant', content: string }, ...]
+ * @param {string} userMessage - The new user message to send
+ * @param {string} model - Ollama model name (optional, will auto-detect if not provided)
+ * @returns {Promise<string>} Assistant's response text
+ */
+export const sendChatMessage = async (messageHistory = [], userMessage, model = null) => {
+  try {
+    // Get model to use (auto-detect if not provided)
+    const modelToUse = model || await getDefaultModel();
+
+    // Build messages array for Ollama API
+    // Convert message history to Ollama format and add the new user message
+    const messages = messageHistory.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    // Add the new user message
+    messages.push({
+      role: 'user',
+      content: userMessage
+    });
+
+    const response = await axios.post(`${OLLAMA_BASE_URL}/api/chat`, {
+      model: modelToUse,
+      messages: messages,
+      stream: false
+    });
+
+    return response.data.message.content;
+  } catch (error) {
+    console.error('Error sending chat message:', error);
+    
+    if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
+      throw new Error('Cannot connect to Ollama. Make sure Ollama is running on your machine.');
+    }
+    
+    throw error;
+  }
+};
+
+/**
  * Get list of available Ollama models
  * @returns {Promise<Array>} Array of model names
  */

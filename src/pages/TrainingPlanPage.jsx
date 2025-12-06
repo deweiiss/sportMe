@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateTrainingPlan, testOllamaConnection, getAvailableModels } from '../services/ollamaApi';
 import { getAccessToken } from '../services/stravaApi';
-import { getCurrentUser, signOut } from '../services/auth';
-import { saveTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
+import { getCurrentUser } from '../services/auth';
+import { saveTrainingPlan, migrateTrainingPlansFromLocalStorage, getTrainingPlans, deleteTrainingPlan } from '../services/supabase';
 import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
 
 // Training plan prompts - functions that take weeklyHours parameter
@@ -270,6 +270,8 @@ const TrainingPlanPage = () => {
   const [isConnected, setIsConnected] = useState(null);
   const [model, setModel] = useState('');
   const [weeklyHours, setWeeklyHours] = useState('5-8h');
+  const [savedPlans, setSavedPlans] = useState([]);
+  const [selectedPlan, setSelectedPlan] = useState(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -281,15 +283,35 @@ const TrainingPlanPage = () => {
       }
 
       // Migrate training plans from localStorage to database (one-time)
-      try {
-        const migrationResult = await migrateTrainingPlansFromLocalStorage();
-        if (migrationResult.migrated > 0) {
-          console.log(`Migrated ${migrationResult.migrated} training plans from localStorage to database`);
+      const migratePlans = async () => {
+        try {
+          const migrationResult = await migrateTrainingPlansFromLocalStorage();
+          if (migrationResult.migrated > 0) {
+            console.log(`Migrated ${migrationResult.migrated} training plans from localStorage to database`);
+          }
+        } catch (err) {
+          console.warn('Failed to migrate training plans:', err);
         }
-      } catch (err) {
-        console.warn('Failed to migrate training plans:', err);
-        // Don't block the app if migration fails
-      }
+      };
+
+      // Load saved training plans
+      const loadSavedPlans = async () => {
+        try {
+          await migratePlans();
+          const result = await getTrainingPlans();
+          if (result.error) {
+            console.error('Error loading training plans:', result.error);
+            setSavedPlans([]);
+            return;
+          }
+          setSavedPlans(result.data || []);
+        } catch (err) {
+          console.error('Error loading saved plans:', err);
+          setSavedPlans([]);
+        }
+      };
+
+      loadSavedPlans();
 
       // Test Ollama connection
       const checkConnection = async () => {
@@ -367,10 +389,102 @@ const TrainingPlanPage = () => {
     setError(null);
   };
 
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      await signOut();
-      navigate('/');
+  const formatPlanDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const getPlanTypeLabel = (planType) => {
+    const labels = {
+      ftp: 'FTP Improvement',
+      base: 'Base Building',
+      vo2max: 'VO2max Training'
+    };
+    return labels[planType] || planType;
+  };
+
+  const handleViewPlan = (plan) => {
+    const calendarPlan = {
+      startdate: plan.startDate,
+      enddate: plan.endDate,
+      week1: plan.weeks.week1,
+      week2: plan.weeks.week2,
+      week3: plan.weeks.week3,
+      week4: plan.weeks.week4
+    };
+    setSelectedPlan({ ...plan, calendarData: calendarPlan });
+  };
+
+  const handleClosePlan = () => {
+    setSelectedPlan(null);
+  };
+
+  const handleSavedPlanChange = async (updatedPlan) => {
+    if (!selectedPlan || !selectedPlan.id) return;
+    
+    try {
+      const planToUpdate = {
+        id: selectedPlan.id,
+        planType: selectedPlan.planType,
+        startDate: updatedPlan.startdate,
+        endDate: updatedPlan.enddate,
+        weeklyHours: selectedPlan.weeklyHours || null,
+        weeks: {
+          week1: updatedPlan.week1,
+          week2: updatedPlan.week2,
+          week3: updatedPlan.week3,
+          week4: updatedPlan.week4
+        }
+      };
+
+      const result = await saveTrainingPlan(planToUpdate);
+      
+      if (result.error) {
+        console.error('Failed to update plan:', result.error);
+        alert(`Failed to update plan: ${result.error}`);
+        return;
+      }
+
+      const updatedPlans = savedPlans.map(p => 
+        p.id === selectedPlan.id ? result.data : p
+      );
+      setSavedPlans(updatedPlans);
+      setSelectedPlan({ ...result.data, calendarData: updatedPlan });
+    } catch (err) {
+      console.error('Error updating plan:', err);
+      alert(`Failed to update plan: ${err.message}`);
+    }
+  };
+
+  const handleDeletePlan = async (plan) => {
+    if (!plan.id) {
+      console.error('Plan missing ID, cannot delete');
+      return;
+    }
+
+    if (window.confirm('Are you sure you want to delete this training plan?')) {
+      try {
+        const result = await deleteTrainingPlan(plan.id);
+        
+        if (result.error) {
+          alert(`Failed to delete plan: ${result.error}`);
+          return;
+        }
+
+        const filteredPlans = savedPlans.filter(p => p.id !== plan.id);
+        setSavedPlans(filteredPlans);
+        
+        if (selectedPlan && selectedPlan.id === plan.id) {
+          setSelectedPlan(null);
+        }
+      } catch (err) {
+        console.error('Error deleting plan:', err);
+        alert(`Failed to delete plan: ${err.message}`);
+      }
     }
   };
 
@@ -409,6 +523,12 @@ const TrainingPlanPage = () => {
         return;
       }
 
+      // Reload saved plans
+      const plansResult = await getTrainingPlans();
+      if (!plansResult.error) {
+        setSavedPlans(plansResult.data || []);
+      }
+
       alert('Plan saved successfully!');
     } catch (err) {
       console.error('Error saving plan:', err);
@@ -418,10 +538,10 @@ const TrainingPlanPage = () => {
 
   if (isConnected === null) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
-        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
           <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-primary-start rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-center text-gray-700 dark:text-gray-300">Checking Ollama connection...</p>
+          <p className="text-gray-700 dark:text-gray-300">Checking Ollama connection...</p>
         </div>
       </div>
     );
@@ -429,8 +549,8 @@ const TrainingPlanPage = () => {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
-        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
+      <div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-md">
           <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 mb-4">
             <h2 className="mt-0 text-red-600 dark:text-red-400 text-2xl font-semibold mb-4">Ollama Not Connected</h2>
             <p className="my-4">Cannot connect to Ollama. Please make sure:</p>
@@ -445,12 +565,6 @@ const TrainingPlanPage = () => {
             >
               Retry Connection
             </button>
-            <button 
-              onClick={() => navigate('/data')} 
-              className="py-3 px-6 mr-2 mt-2 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Back to Activities
-            </button>
           </div>
         </div>
       </div>
@@ -460,25 +574,63 @@ const TrainingPlanPage = () => {
   // Show plan selection if no plan is selected or generated
   if (!selectedPlanType || !response) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
-        <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
-        <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 dark:border-gray-700 flex-wrap gap-4">
-          <h1 className="m-0 text-gray-900 dark:text-white text-3xl">Generate Training Plan</h1>
-          <div className="flex gap-4">
-            <button 
-              onClick={() => navigate('/data')} 
-              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Back to Activities
-            </button>
-            <button 
-              onClick={handleLogout} 
-              className="py-3 px-6 bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Logout
-            </button>
+      <div>
+        <h1 className="text-4xl m-0 mb-8 text-gray-900 dark:text-white">Training Plan</h1>
+
+        {/* Saved Training Plans Section */}
+        {savedPlans.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-3xl m-0 mb-6 text-gray-900 dark:text-white">Saved Training Plans</h2>
+            <div className="flex flex-col gap-6">
+              {savedPlans.map((plan, index) => (
+                <div key={index} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg">
+                  <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                    <h3 className="m-0 text-xl text-gray-900 dark:text-white">{getPlanTypeLabel(plan.planType)}</h3>
+                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
+                      {formatPlanDate(plan.startDate)} - {formatPlanDate(plan.endDate)}
+                    </span>
+                  </div>
+                  <div className="flex gap-4 mb-4">
+                    <button 
+                      onClick={() => handleViewPlan(plan)}
+                      className="bg-primary-start hover:bg-primary-end text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
+                    >
+                      {selectedPlan && 
+                       selectedPlan.id === plan.id 
+                        ? 'Hide Plan' 
+                        : 'View/Edit Plan'}
+                    </button>
+                    <button 
+                      onClick={() => handleDeletePlan(plan)}
+                      className="bg-red-600 hover:bg-red-700 text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {selectedPlan && 
+                   selectedPlan.id === plan.id && (
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                      <TrainingPlanCalendar
+                        planData={selectedPlan.calendarData}
+                        onPlanChange={handleSavedPlanChange}
+                        planType={plan.planType}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Plan Generation Section */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-md">
+          <div className="mb-8">
+            <h2 className="text-2xl m-0 mb-4 text-gray-900 dark:text-white">Generate New Training Plan</h2>
+            <p className="text-gray-600 dark:text-gray-300 text-lg">
+              Select a training plan type to generate a personalized plan.
+            </p>
+          </div>
 
           <p className="text-center text-gray-600 dark:text-gray-300 text-lg mb-8">
             Select a training plan type to generate a personalized plan.
@@ -551,35 +703,20 @@ const TrainingPlanPage = () => {
 
   // Show generated plan
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-start to-primary-end p-8">
-      <div className="max-w-6xl mx-auto bg-white dark:bg-gray-800 rounded-xl p-8 shadow-xl relative">
-        <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 dark:border-gray-700 flex-wrap gap-4">
-          <h1 className="m-0 text-gray-900 dark:text-white text-3xl">
-            {selectedPlanType === 'ftp' && 'FTP Improvement Plan'}
-            {selectedPlanType === 'base' && 'Base Building Plan'}
-            {selectedPlanType === 'vo2max' && 'VO2max Training Plan'}
-          </h1>
-          <div className="flex gap-4">
-            <button 
-              onClick={handleBack} 
-              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Back to Options
-            </button>
-            <button 
-              onClick={() => navigate('/data')} 
-              className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Back to Activities
-            </button>
-            <button 
-              onClick={handleLogout} 
-              className="py-3 px-6 bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
+    <div>
+      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+        <h1 className="text-4xl m-0 text-gray-900 dark:text-white">
+          {selectedPlanType === 'ftp' && 'FTP Improvement Plan'}
+          {selectedPlanType === 'base' && 'Base Building Plan'}
+          {selectedPlanType === 'vo2max' && 'VO2max Training Plan'}
+        </h1>
+        <button 
+          onClick={handleBack} 
+          className="py-3 px-6 bg-primary-start hover:bg-primary-end text-white border-none rounded-lg cursor-pointer text-base font-semibold transition-all hover:-translate-y-0.5"
+        >
+          Back to Options
+        </button>
+      </div>
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -600,8 +737,9 @@ const TrainingPlanPage = () => {
           </div>
         )}
 
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-md">
         {planData ? (
-          <div className="mt-8">
+          <div>
             <div className="flex gap-4 mb-6 justify-end">
               <button 
                 onClick={handleSavePlan} 
@@ -631,7 +769,7 @@ const TrainingPlanPage = () => {
             />
           </div>
         ) : response && (
-          <div className="mt-8 border-t-2 border-gray-200 dark:border-gray-700 pt-8">
+          <div>
             <div className="flex justify-end mb-4">
               <button
                 onClick={() => {

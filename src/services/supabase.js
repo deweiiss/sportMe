@@ -680,5 +680,134 @@ export const migrateTrainingPlansFromLocalStorage = async () => {
   }
 };
 
+/**
+ * Get chat history for the current authenticated user
+ * @param {number} limit - Maximum number of messages to fetch (default: 100)
+ * @returns {Promise<{data?: Array, error?: string}>}
+ */
+export const getChatHistory = async (limit = 100) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Fetch chat messages from Supabase
+    const { data: messages, error: messagesError } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (messagesError) {
+      return { error: messagesError.message };
+    }
+
+    // Transform to frontend format
+    const transformedMessages = (messages || []).map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.created_at
+    }));
+
+    return { data: transformedMessages };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Save a single chat message for the current authenticated user
+ * @param {string} role - Message role ('user' or 'assistant')
+ * @param {string} content - Message content
+ * @returns {Promise<{data?: Object, error?: string}>}
+ */
+export const saveChatMessage = async (role, content) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Insert message
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        user_id: user.id,
+        role: role,
+        content: content
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    // Transform to frontend format
+    const transformedMessage = {
+      id: data.id,
+      role: data.role,
+      content: data.content,
+      createdAt: data.created_at
+    };
+
+    return { data: transformedMessage };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Batch save multiple chat messages for the current authenticated user
+ * @param {Array} messages - Array of { role: string, content: string } objects
+ * @returns {Promise<{data?: Array, error?: string}>}
+ */
+export const saveChatMessages = async (messages) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Prepare data for batch insert
+    const dbData = messages.map(msg => ({
+      user_id: user.id,
+      role: msg.role,
+      content: msg.content
+    }));
+
+    // Insert messages
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert(dbData)
+      .select();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    // Transform to frontend format
+    const transformedMessages = (data || []).map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.created_at
+    }));
+
+    return { data: transformedMessages };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
 export default supabase;
 

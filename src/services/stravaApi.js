@@ -248,4 +248,23 @@ export const getActivities = async (perPage = 30, page = 1) => {
   }
 };
 
+/**
+ * Fetch authenticated athlete data from Strava API
+ * @returns {Promise<Object>} Athlete object with firstname, lastname, weight, bikes, shoes, etc.
+ */
+export const getAthlete = async () => {
+  try {
+    const headers = await getAuthHeader();
+    
+    const response = await axios.get(`${STRAVA_BASE_URL}/api/v3/athlete`, {
+      headers,
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching athlete data:', error);
+    throw error;
+  }
+};
+
 

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getAthlete as getAthleteFromStrava } from './stravaApi';
 
 // Supabase configuration
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -222,6 +223,235 @@ export const getAthlete = async (stravaId) => {
     }
 
     return { data };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Get athlete profile data for the current authenticated user
+ * @returns {Promise<{data?: Object, error?: string}>}
+ */
+export const getAthleteProfile = async () => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Get the athlete profile for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (athleteError) {
+      return { error: athleteError.message };
+    }
+
+    if (!athlete) {
+      return { error: 'Athlete not found for this user' };
+    }
+
+    return { data: athlete };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Update athlete profile data for the current authenticated user
+ * @param {Object} profileData - Profile data to update (all fields optional and nullable)
+ * @param {string} profileData.firstname - First name
+ * @param {string} profileData.lastname - Last name
+ * @param {number} profileData.weight - Weight in kg
+ * @param {string} profileData.city - City
+ * @param {string} profileData.state - State
+ * @param {string} profileData.country - Country
+ * @param {string} profileData.sex - Gender ("M" or "F")
+ * @param {string} profileData.birthday - Birthday (YYYY-MM-DD format)
+ * @param {Array} profileData.bikes - Bikes array (JSONB)
+ * @param {Array} profileData.shoes - Shoes array (JSONB)
+ * @returns {Promise<{data?: Object, error?: string}>}
+ */
+export const updateAthleteProfile = async (profileData) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Prepare update data - only include fields that are provided
+    // Convert empty strings to null to allow clearing fields
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (profileData.firstname !== undefined) {
+      updateData.firstname = profileData.firstname || null;
+    }
+    if (profileData.lastname !== undefined) {
+      updateData.lastname = profileData.lastname || null;
+    }
+    if (profileData.weight !== undefined) {
+      updateData.weight = profileData.weight === '' || profileData.weight === null ? null : profileData.weight;
+    }
+    if (profileData.city !== undefined) {
+      updateData.city = profileData.city || null;
+    }
+    if (profileData.state !== undefined) {
+      updateData.state = profileData.state || null;
+    }
+    if (profileData.country !== undefined) {
+      updateData.country = profileData.country || null;
+    }
+    if (profileData.sex !== undefined) {
+      updateData.sex = profileData.sex || null;
+    }
+    if (profileData.birthday !== undefined) {
+      updateData.birthday = profileData.birthday || null;
+    }
+    if (profileData.bikes !== undefined) {
+      updateData.bikes = profileData.bikes && profileData.bikes.length > 0 ? profileData.bikes : null;
+    }
+    if (profileData.shoes !== undefined) {
+      updateData.shoes = profileData.shoes && profileData.shoes.length > 0 ? profileData.shoes : null;
+    }
+
+    // Update the athlete profile
+    const { data, error } = await supabase
+      .from('athletes')
+      .update(updateData)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return { data };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Sync athlete profile from Strava API with selective update logic
+ * - Only updates NULL/empty fields (preserves user edits)
+ * - Always updates bikes and shoes arrays (gear section)
+ * @returns {Promise<{data?: Object, error?: string}>}
+ */
+export const syncAthleteProfileFromStrava = async () => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { error: 'User not authenticated' };
+    }
+
+    // Get current profile from database
+    const { data: currentProfile, error: profileError } = await supabase
+      .from('athletes')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      return { error: profileError.message };
+    }
+
+    if (!currentProfile) {
+      return { error: 'No Strava account connected. Please connect your Strava account first.' };
+    }
+
+    // Fetch latest data from Strava API
+    let stravaAthlete;
+    try {
+      stravaAthlete = await getAthleteFromStrava();
+    } catch (stravaError) {
+      // Provide more helpful error message for missing access token
+      if (stravaError.message && stravaError.message.includes('No access token')) {
+        return { error: 'Strava access token not found. Please reconnect your Strava account.' };
+      }
+      return { error: `Failed to fetch from Strava: ${stravaError.message}` };
+    }
+
+    // Prepare update data with selective merge logic
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Only update fields that are NULL/empty in database (preserve user edits)
+    if (!currentProfile.firstname && stravaAthlete.firstname) {
+      updateData.firstname = stravaAthlete.firstname;
+    }
+    if (!currentProfile.lastname && stravaAthlete.lastname) {
+      updateData.lastname = stravaAthlete.lastname;
+    }
+    if ((currentProfile.weight === null || currentProfile.weight === undefined) && stravaAthlete.weight) {
+      updateData.weight = stravaAthlete.weight;
+    }
+    if (!currentProfile.city && stravaAthlete.city) {
+      updateData.city = stravaAthlete.city;
+    }
+    if (!currentProfile.state && stravaAthlete.state) {
+      updateData.state = stravaAthlete.state;
+    }
+    if (!currentProfile.country && stravaAthlete.country) {
+      updateData.country = stravaAthlete.country;
+    }
+    if (!currentProfile.sex && stravaAthlete.sex) {
+      updateData.sex = stravaAthlete.sex;
+    }
+    if (!currentProfile.birthday && stravaAthlete.birthday) {
+      updateData.birthday = stravaAthlete.birthday;
+    }
+
+    // Always update bikes and shoes (gear section) regardless of existing data
+    // Always sync gear, even if empty arrays (to ensure we have latest data from Strava)
+    // Handle cases where bikes/shoes might be undefined, null, or empty arrays
+    const bikesData = (stravaAthlete.bikes && Array.isArray(stravaAthlete.bikes) && stravaAthlete.bikes.length > 0)
+      ? stravaAthlete.bikes 
+      : null;
+    const shoesData = (stravaAthlete.shoes && Array.isArray(stravaAthlete.shoes) && stravaAthlete.shoes.length > 0)
+      ? stravaAthlete.shoes 
+      : null;
+    
+    // Always update gear (even if it's the same, to ensure we have latest data)
+    updateData.bikes = bikesData;
+    updateData.shoes = shoesData;
+
+    // Log for debugging
+    console.log('Syncing gear from Strava:', { 
+      bikesCount: bikesData?.length || 0, 
+      shoesCount: shoesData?.length || 0,
+      bikes: bikesData,
+      shoes: shoesData
+    });
+
+    // Always update (gear is always synced, and we have updated_at)
+    // Don't skip update even if only gear changed
+
+    // Update the athlete profile
+    const { data: updated, error: updateError } = await supabase
+      .from('athletes')
+      .update(updateData)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      return { error: updateError.message };
+    }
+
+    return { data: updated };
   } catch (err) {
     return { error: err.message };
   }

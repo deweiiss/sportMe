@@ -596,7 +596,7 @@ const DataPage = () => {
                 <div className="text-center mt-8">
                   <button
                     onClick={handleShowMore}
-                    className="px-8 py-3 text-base bg-blue-600 hover:bg-blue-700 text-white border-none rounded cursor-pointer font-medium transition-colors"
+                    className="px-8 py-3 text-base bg-yale-blue-600 hover:bg-yale-blue-700 text-white border-none rounded cursor-pointer font-medium transition-colors"
                   >
                     Show More
                   </button>

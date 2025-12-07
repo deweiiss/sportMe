@@ -212,9 +212,9 @@ const TrainingPlanCalendar = ({ planData, onPlanChange, planType }) => {
                 <div
                   key={`${weekKey}-${dayKey}`}
                   className={`min-h-[120px] border-r border-gray-200 dark:border-gray-700 p-2 flex flex-col bg-white dark:bg-gray-800 cursor-pointer transition-colors relative last:border-r-0 ${
-                    isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                    isToday ? 'bg-yale-blue-50 dark:bg-yale-blue-900/20' : ''
                   } ${
-                    isDragging ? 'opacity-50 bg-blue-100 dark:bg-blue-800/30' : ''
+                    isDragging ? 'opacity-50 bg-yale-blue-100 dark:bg-yale-blue-800/30' : ''
                   } hover:bg-gray-50 dark:hover:bg-gray-700 ${
                     workout && workout.trim() !== '' && workout.toLowerCase() !== 'rest' ? 'cursor-grab active:cursor-grabbing' : ''
                   }`}

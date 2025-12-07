@@ -186,7 +186,7 @@ const AboutMePage = () => {
         </div>
 
         {/* Information Message */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+        <div className="bg-yale-blue-50 dark:bg-yale-blue-900/20 border border-yale-blue-200 dark:border-yale-blue-800 rounded-xl p-6">
           <p className="text-gray-700 dark:text-gray-300 m-0">
             This is what I learned about you based on your Strava account and our conversations. If you want to update any information, just let me know!
           </p>

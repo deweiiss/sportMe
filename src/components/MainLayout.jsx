@@ -73,7 +73,7 @@ const MainLayout = ({ children }) => {
   });
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex">
+    <div className="min-h-screen bg-slate-grey-100 dark:bg-slate-grey-900 flex">
       {/* Left Column - Navigation Sidebar */}
       <NavigationSidebar 
         collapsed={sidebarCollapsed}
@@ -98,8 +98,8 @@ const MainLayout = ({ children }) => {
         style={{ right: `${chatWidth}px`, width: '8px', marginRight: '-4px' }}
       >
         <div
-          className={`w-0.5 h-full bg-gray-300 dark:bg-gray-600 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors ${
-            isResizing ? 'bg-blue-500 dark:bg-blue-600' : ''
+          className={`w-0.5 h-full bg-slate-grey-300 dark:bg-slate-grey-600 hover:bg-yale-blue-500 dark:hover:bg-yale-blue-600 transition-colors ${
+            isResizing ? 'bg-yale-blue-500 dark:bg-yale-blue-600' : ''
           }`}
           style={{ marginLeft: '4px' }}
         />

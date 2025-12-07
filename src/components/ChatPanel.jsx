@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '../services/ollamaApi';
 import { getChatHistory, saveChatMessage } from '../services/supabase';
 
-const ChatPanel = () => {
+const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -108,7 +108,10 @@ const ChatPanel = () => {
   };
 
   return (
-    <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-screen fixed right-0 top-0">
+    <div 
+      className="bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-screen fixed right-0 top-0"
+      style={{ width: `${width}px` }}
+    >
       {/* Chat Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white m-0">Chat</h3>

@@ -3,12 +3,15 @@ import ReactMarkdown from 'react-markdown';
 import { sendChatMessage } from '../services/ollamaApi';
 import { getChatHistory, saveChatMessage } from '../services/supabase';
 import { extractProfileData } from '../services/profileExtraction';
+import { getUserContext } from '../services/contextRetrieval';
 
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const [userContext, setUserContext] = useState(null);
+  const [contextLoading, setContextLoading] = useState(false);
 
   // Load chat history on component mount
   useEffect(() => {
@@ -37,6 +40,45 @@ const ChatPanel = ({ width = 320 }) => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Check if message needs context based on keywords
+  const needsContext = (message) => {
+    if (!message || typeof message !== 'string') return false;
+    const lowerMessage = message.toLowerCase();
+    const contextKeywords = [
+      'plan', 'training', 'workout', 'adjust', 'modify', 'change', 'update',
+      'create', 'new plan', 'training plan', 'schedule', 'program',
+      'my workouts', 'my activities', 'past runs', 'previous',
+      'based on', 'considering', 'using my', 'my profile', 'my data',
+      'improve', 'faster', 'marathon', 'race', 'goal'
+    ];
+    return contextKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+
+  // Fetch user context with caching
+  const fetchUserContext = async (forceRefresh = false) => {
+    // Return cached context if available and not forcing refresh
+    if (userContext && !forceRefresh) {
+      return userContext;
+    }
+
+    // If already loading, return null to avoid duplicate requests
+    if (contextLoading) {
+      return null;
+    }
+
+    try {
+      setContextLoading(true);
+      const context = await getUserContext();
+      setUserContext(context);
+      return context;
+    } catch (error) {
+      console.error('Error fetching user context:', error);
+      return null;
+    } finally {
+      setContextLoading(false);
+    }
   };
 
   // Background profile extraction function
@@ -96,8 +138,15 @@ const ChatPanel = ({ width = 320 }) => {
         content: msg.content
       }));
 
+      // Check if we need context and fetch it if necessary
+      let context = null;
+      if (needsContext(userMessage) || messages.length === 0) {
+        // Fetch context on first message or when keywords detected
+        context = await fetchUserContext();
+      }
+
       // Call Ollama API (it will add the userMessage to the history)
-      const assistantResponse = await sendChatMessage(messageHistory, userMessage);
+      const assistantResponse = await sendChatMessage(messageHistory, userMessage, null, context);
 
       // Add assistant response to local state
       const newAssistantMessage = {

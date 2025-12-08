@@ -26,9 +26,20 @@ Coaching methodology:
 - Respect prior training load and recent consistency
 - Assume the athlete is honest but may overestimate capacity
 
+Using Context Information:
+When user context is provided (athlete profile, workout history, existing training plans):
+- ALWAYS reference the athlete's profile information when making recommendations (weight, location, gear, etc.)
+- Use workout history to understand current fitness level and training load
+- When modifying or adjusting training plans, reference the existing plan structure
+- Consider recent activity patterns and frequency when creating new plans
+- Use activity data (pace, distance, frequency) to inform appropriate training intensities
+- If an active training plan exists, respect its structure when making modifications
+- Base load progression on actual completed workouts, not just planned workouts
+
 Interaction rules:
-- Start with structured intake questions
+- Start with structured intake questions if critical information is missing
 - Only generate a full training plan after all critical inputs are collected
+- When context is available, use it proactively rather than asking for information already provided
 - Summarize assumptions explicitly before final plan output
 - Use precise, unambiguous language
 
@@ -88,9 +99,10 @@ export const generateTrainingPlan = async (prompt, model = null, context = null)
  * @param {Array} messageHistory - Array of previous messages in format [{ role: 'user'|'assistant', content: string }, ...]
  * @param {string} userMessage - The new user message to send
  * @param {string} model - Ollama model name (optional, will auto-detect if not provided)
+ * @param {string} context - Optional user context (profile, workouts, plans) to include
  * @returns {Promise<string>} Assistant's response text
  */
-export const sendChatMessage = async (messageHistory = [], userMessage, model = null) => {
+export const sendChatMessage = async (messageHistory = [], userMessage, model = null, context = null) => {
   try {
     // Get model to use (auto-detect if not provided)
     const modelToUse = model || await getDefaultModel();
@@ -107,6 +119,20 @@ export const sendChatMessage = async (messageHistory = [], userMessage, model = 
         role: 'system',
         content: RUNNING_COACH_SYSTEM_PROMPT
       });
+    }
+    
+    // Add context as a system message if provided and not already in history
+    if (context && context.trim()) {
+      const hasContext = messageHistory.some(msg => 
+        msg.role === 'system' && msg.content.includes('=== ATHLETE PROFILE ===')
+      );
+      
+      if (!hasContext) {
+        messages.push({
+          role: 'system',
+          content: `=== USER CONTEXT ===\n${context}\n\nUse this information about the athlete to provide personalized coaching and training plans.`
+        });
+      }
     }
     
     // Convert message history to Ollama format (excluding system if we just added it)

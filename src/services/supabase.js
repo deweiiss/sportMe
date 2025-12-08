@@ -417,29 +417,37 @@ export const syncAthleteProfileFromStrava = async () => {
     // Always update bikes and shoes (gear section) regardless of existing data
     // Always sync gear, even if empty arrays (to ensure we have latest data from Strava)
     // Handle cases where bikes/shoes might be undefined, null, or empty arrays
-    const bikesData = (stravaAthlete.bikes && Array.isArray(stravaAthlete.bikes) && stravaAthlete.bikes.length > 0)
-      ? stravaAthlete.bikes 
+    // If they exist as arrays (even empty), use them; otherwise set to null
+    const bikesData = (stravaAthlete.bikes !== undefined && stravaAthlete.bikes !== null)
+      ? (Array.isArray(stravaAthlete.bikes) ? stravaAthlete.bikes : null)
       : null;
-    const shoesData = (stravaAthlete.shoes && Array.isArray(stravaAthlete.shoes) && stravaAthlete.shoes.length > 0)
-      ? stravaAthlete.shoes 
+    const shoesData = (stravaAthlete.shoes !== undefined && stravaAthlete.shoes !== null)
+      ? (Array.isArray(stravaAthlete.shoes) ? stravaAthlete.shoes : null)
       : null;
     
     // Always update gear (even if it's the same, to ensure we have latest data)
     updateData.bikes = bikesData;
     updateData.shoes = shoesData;
 
-    // Log for debugging
+    // Log for debugging - log the raw Strava response too
     console.log('Syncing gear from Strava:', { 
+      rawStravaBikes: stravaAthlete.bikes,
+      rawStravaShoes: stravaAthlete.shoes,
+      bikesData: bikesData,
+      shoesData: shoesData,
       bikesCount: bikesData?.length || 0, 
       shoesCount: shoesData?.length || 0,
-      bikes: bikesData,
-      shoes: shoesData
+      bikesType: typeof stravaAthlete.bikes,
+      shoesType: typeof stravaAthlete.shoes,
+      isBikesArray: Array.isArray(stravaAthlete.bikes),
+      isShoesArray: Array.isArray(stravaAthlete.shoes)
     });
 
     // Always update (gear is always synced, and we have updated_at)
     // Don't skip update even if only gear changed
 
     // Update the athlete profile
+    console.log('Updating athlete profile with data:', updateData);
     const { data: updated, error: updateError } = await supabase
       .from('athletes')
       .update(updateData)
@@ -448,8 +456,16 @@ export const syncAthleteProfileFromStrava = async () => {
       .single();
 
     if (updateError) {
+      console.error('Error updating athlete profile:', updateError);
       return { error: updateError.message };
     }
+
+    console.log('Athlete profile updated successfully:', {
+      bikes: updated.bikes,
+      shoes: updated.shoes,
+      bikesType: typeof updated.bikes,
+      shoesType: typeof updated.shoes
+    });
 
     return { data: updated };
   } catch (err) {

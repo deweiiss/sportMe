@@ -143,6 +143,15 @@ const AboutMePage = () => {
       } else {
         // Update local state with synced data
         if (result.data) {
+          console.log('Updating athlete profile state with synced data:', {
+            bikes: result.data.bikes,
+            shoes: result.data.shoes,
+            bikesType: typeof result.data.bikes,
+            shoesType: typeof result.data.shoes,
+            isBikesArray: Array.isArray(result.data.bikes),
+            isShoesArray: Array.isArray(result.data.shoes),
+            fullData: result.data
+          });
           setAthleteProfile(result.data);
         }
         // Show success feedback (optional - could be a toast notification)

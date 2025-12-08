@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { sendChatMessage } from '../services/ollamaApi';
 import { getChatHistory, saveChatMessage } from '../services/supabase';
+import { extractProfileData } from '../services/profileExtraction';
 
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
@@ -35,6 +37,35 @@ const ChatPanel = ({ width = 320 }) => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Background profile extraction function
+  const extractProfileDataInBackground = async (conversationHistory) => {
+    try {
+      // Only extract from recent conversation (last 20 messages for context)
+      const recentHistory = conversationHistory.slice(-20);
+      
+      const extractedData = await extractProfileData(recentHistory);
+      
+      // Log extracted profile fields
+      if (Object.keys(extractedData.profileFields).length > 0) {
+        console.log('📝 Profile fields to save:', extractedData.profileFields);
+      }
+      
+      // Log free text information
+      if (extractedData.freeTextInfo && extractedData.freeTextInfo.length > 0) {
+        console.log('💬 Free text information to save:', extractedData.freeTextInfo);
+      }
+      
+      // Log if nothing was extracted
+      if (Object.keys(extractedData.profileFields).length === 0 && 
+          (!extractedData.freeTextInfo || extractedData.freeTextInfo.length === 0)) {
+        console.log('ℹ️ No profile information extracted from this conversation.');
+      }
+    } catch (error) {
+      // Silently handle errors - extraction shouldn't affect chat UX
+      console.error('Background profile extraction failed:', error);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -78,6 +109,16 @@ const ChatPanel = ({ width = 320 }) => {
 
       // Save assistant response to database
       await saveChatMessage('assistant', assistantResponse);
+
+      // Trigger background profile extraction (non-blocking)
+      // Include the new messages in the conversation history for extraction
+      const updatedMessageHistory = [...messages, newUserMessage, newAssistantMessage].map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+      
+      // Run extraction in background without blocking
+      extractProfileDataInBackground(updatedMessageHistory);
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -138,7 +179,26 @@ const ChatPanel = ({ width = 320 }) => {
                     : 'bg-lavender-blush-200 dark:bg-lavender-blush-700 text-lavender-blush-900 dark:text-lavender-blush-100'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap break-words m-0">{message.content}</p>
+                {message.role === 'user' ? (
+                  <p className="text-sm whitespace-pre-wrap break-words m-0">{message.content}</p>
+                ) : (
+                  <div className="text-sm break-words prose prose-sm dark:prose-invert max-w-none m-0
+                    prose-headings:mt-2 prose-headings:mb-2
+                    prose-p:my-2 prose-p:leading-relaxed
+                    prose-ul:my-2 prose-ol:my-2
+                    prose-li:my-1
+                    prose-code:text-sm prose-code:bg-black/10 dark:prose-code:bg-white/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+                    prose-pre:bg-black/10 dark:prose-pre:bg-white/10 prose-pre:rounded prose-pre:p-3 prose-pre:overflow-x-auto
+                    prose-strong:font-semibold
+                    prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline
+                    prose-blockquote:border-l-4 prose-blockquote:border-gray-400 dark:prose-blockquote:border-gray-500 prose-blockquote:pl-4 prose-blockquote:italic
+                    prose-table:border-collapse prose-table:w-full
+                    prose-th:border prose-th:border-gray-300 dark:prose-th:border-gray-600 prose-th:px-2 prose-th:py-1 prose-th:bg-gray-100 dark:prose-th:bg-gray-800
+                    prose-td:border prose-td:border-gray-300 dark:prose-td:border-gray-600 prose-td:px-2 prose-td:py-1
+                    [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                  </div>
+                )}
                 {message.createdAt && (
                   <p
                     className={`text-xs mt-1 mb-0 ${

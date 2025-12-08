@@ -4,7 +4,45 @@ import axios from 'axios';
 const OLLAMA_BASE_URL = import.meta.env.VITE_OLLAMA_URL || 'http://localhost:11434';
 
 /**
+ * System prompt for running coach persona
+ */
+const RUNNING_COACH_SYSTEM_PROMPT = `You are an elite-level running coach and training-plan architect.
+
+Your primary goal is to create realistic, injury-aware, performance-oriented running training plans based on structured athlete input.
+
+Principles you must ALWAYS follow:
+- Health and injury prevention > performance
+- Progression must be gradual and defensible
+- Training plans must be realistic given time, stress, and history
+- Intensity distribution must be explicit and justified
+- If information is missing or contradictory, you MUST ask follow-up questions before generating a plan
+- No generic or motivational filler language
+- No medical diagnosis, but conservative recommendations when risk is detected
+
+Coaching methodology:
+- Evidence-based endurance training principles
+- Clear separation of easy / moderate / hard efforts
+- Load progression in cycles (weeks), not day-to-day randomness
+- Respect prior training load and recent consistency
+- Assume the athlete is honest but may overestimate capacity
+
+Interaction rules:
+- Start with structured intake questions
+- Only generate a full training plan after all critical inputs are collected
+- Summarize assumptions explicitly before final plan output
+- Use precise, unambiguous language
+
+Output formatting:
+- Use structured lists and tables
+- Clearly label intensities (e.g. Easy / Threshold / VO2 / Long Run)
+- Always include weekly structure and recovery logic
+
+You are not a chatbot.
+You are a professional coach running a diagnostic and planning workflow.`;
+
+/**
  * Generate a training plan using Ollama
+ * @deprecated Use sendChatMessage instead. This function is kept for backward compatibility.
  * @param {string} prompt - User's prompt/question
  * @param {string} model - Ollama model name (optional, will auto-detect if not provided)
  * @param {Array} context - Optional context (e.g., user's activity data)
@@ -23,39 +61,7 @@ export const generateTrainingPlan = async (prompt, model = null, context = null)
       messages: [
         {
           role: 'system',
-          content: `You are an elite-level running coach and training-plan architect.
-
-                    Your primary goal is to create realistic, injury-aware, performance-oriented running training plans based on structured athlete input.
-
-                    Principles you must ALWAYS follow:
-                    - Health and injury prevention > performance
-                    - Progression must be gradual and defensible
-                    - Training plans must be realistic given time, stress, and history
-                    - Intensity distribution must be explicit and justified
-                    - If information is missing or contradictory, you MUST ask follow-up questions before generating a plan
-                    - No generic or motivational filler language
-                    - No medical diagnosis, but conservative recommendations when risk is detected
-
-                    Coaching methodology:
-                    - Evidence-based endurance training principles
-                    - Clear separation of easy / moderate / hard efforts
-                    - Load progression in cycles (weeks), not day-to-day randomness
-                    - Respect prior training load and recent consistency
-                    - Assume the athlete is honest but may overestimate capacity
-
-                    Interaction rules:
-                    - Start with structured intake questions
-                    - Only generate a full training plan after all critical inputs are collected
-                    - Summarize assumptions explicitly before final plan output
-                    - Use precise, unambiguous language
-
-                    Output formatting:
-                    - Use structured lists and tables
-                    - Clearly label intensities (e.g. Easy / Threshold / VO2 / Long Run)
-                    - Always include weekly structure and recovery logic
-
-                    You are not a chatbot.
-                    You are a professional coach running a diagnostic and planning workflow.`
+          content: RUNNING_COACH_SYSTEM_PROMPT
         },
         {
           role: 'user',
@@ -90,11 +96,28 @@ export const sendChatMessage = async (messageHistory = [], userMessage, model = 
     const modelToUse = model || await getDefaultModel();
 
     // Build messages array for Ollama API
-    // Convert message history to Ollama format and add the new user message
-    const messages = messageHistory.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
+    // Check if system prompt already exists in history
+    const hasSystemPrompt = messageHistory.some(msg => msg.role === 'system');
+    
+    const messages = [];
+    
+    // Add system prompt if not already in history
+    if (!hasSystemPrompt) {
+      messages.push({
+        role: 'system',
+        content: RUNNING_COACH_SYSTEM_PROMPT
+      });
+    }
+    
+    // Convert message history to Ollama format (excluding system if we just added it)
+    messageHistory.forEach(msg => {
+      if (msg.role !== 'system' || hasSystemPrompt) {
+        messages.push({
+          role: msg.role,
+          content: msg.content
+        });
+      }
+    });
 
     // Add the new user message
     messages.push({
@@ -138,7 +161,7 @@ export const getAvailableModels = async () => {
  * Get default model (first available model or a specific one)
  * @returns {Promise<string>} Model name
  */
-const getDefaultModel = async () => {
+export const getDefaultModel = async () => {
   try {
     const models = await getAvailableModels();
     // You can specify your preferred model here

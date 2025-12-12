@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { sendChatMessage } from '../services/ollamaApi';
+import { sendChatMessage as sendOllamaMessage } from '../services/ollamaApi';
+import { sendChatMessage as sendGeminiMessage } from '../services/geminiApi';
 import { getChatHistory, saveChatMessage } from '../services/supabase';
 import { extractProfileData } from '../services/profileExtraction';
 import { getUserContext } from '../services/contextRetrieval';
@@ -12,6 +13,19 @@ const ChatPanel = ({ width = 320 }) => {
   const messagesEndRef = useRef(null);
   const [userContext, setUserContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    // Load from localStorage, default to 'gemini'
+    const saved = localStorage.getItem('chatModel');
+    const model = saved || 'gemini';
+    console.log('🔧 Initializing selectedModel from localStorage:', saved, '→ using:', model);
+    return model;
+  });
+
+  // Save model preference when it changes
+  useEffect(() => {
+    console.log('💾 Saving model preference to localStorage:', selectedModel);
+    localStorage.setItem('chatModel', selectedModel);
+  }, [selectedModel]);
 
   // Load chat history on component mount
   useEffect(() => {
@@ -145,8 +159,53 @@ const ChatPanel = ({ width = 320 }) => {
         context = await fetchUserContext();
       }
 
-      // Call Ollama API (it will add the userMessage to the history)
-      const assistantResponse = await sendChatMessage(messageHistory, userMessage, null, context);
+      // Call appropriate API based on selected model
+      // Debug: Log the selected model to verify it's being read correctly
+      const currentModel = selectedModel?.toLowerCase()?.trim();
+      console.log('🔍 Selected model (raw):', selectedModel);
+      console.log('🔍 Selected model (normalized):', currentModel);
+      console.log('🔍 Model comparison (gemini):', currentModel === 'gemini');
+      console.log('🔍 Model comparison (ollama):', currentModel === 'ollama');
+      
+      let assistantResponse;
+      // Explicit check: use Gemini if explicitly 'gemini', otherwise use Ollama
+      if (currentModel === 'gemini') {
+        console.log('✅ Calling Gemini API');
+        try {
+          assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context);
+          console.log('✅ Gemini response received, length:', assistantResponse?.length);
+        } catch (geminiError) {
+          console.error('❌ Gemini API error:', geminiError);
+          
+          // Fallback to Ollama if Gemini is unavailable (503 error)
+          if (geminiError.isUnavailable || geminiError.message?.includes('overloaded') || geminiError.message?.includes('unavailable')) {
+            console.log('🔄 Gemini unavailable, falling back to Ollama...');
+            try {
+              assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context);
+              console.log('✅ Ollama fallback response received, length:', assistantResponse?.length);
+              
+              // Add a note to the response that we used fallback
+              assistantResponse = `*[Note: Gemini API was temporarily unavailable, using Ollama instead]*\n\n${assistantResponse}`;
+            } catch (ollamaError) {
+              console.error('❌ Ollama fallback also failed:', ollamaError);
+              // If Ollama also fails, throw the original Gemini error
+              throw geminiError;
+            }
+          } else {
+            // For non-503 errors, throw immediately
+            throw geminiError;
+          }
+        }
+      } else {
+        console.log('✅ Calling Ollama API (selectedModel is not "gemini")');
+        try {
+          assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context);
+          console.log('✅ Ollama response received, length:', assistantResponse?.length);
+        } catch (ollamaError) {
+          console.error('❌ Ollama API error:', ollamaError);
+          throw ollamaError;
+        }
+      }
 
       // Add assistant response to local state
       const newAssistantMessage = {
@@ -282,6 +341,21 @@ const ChatPanel = ({ width = 320 }) => {
       {/* Chat Input */}
       <div className="p-4 border-t border-lavender-blush-200 dark:border-lavender-blush-800">
         <div className="flex gap-2">
+          {/* Model Switcher - Left side of input */}
+          <select
+            value={selectedModel}
+            onChange={(e) => {
+              const newModel = e.target.value;
+              console.log('🔄 Model changed from', selectedModel, 'to', newModel);
+              setSelectedModel(newModel);
+            }}
+            disabled={isLoading}
+            className="px-3 py-3 border-2 border-lavender-blush-200 dark:border-lavender-blush-600 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:border-yale-blue-500 dark:bg-lavender-blush-800 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="gemini">Gemini</option>
+            <option value="ollama">Ollama</option>
+          </select>
+          
           <input
             type="text"
             placeholder="Ask anything..."

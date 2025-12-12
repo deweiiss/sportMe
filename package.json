@@ -12,6 +12,7 @@
     "clear:db": "node scripts/clear-database.js --confirm"
   },
   "dependencies": {
+    "@google/genai": "^1.31.0",
     "@supabase/supabase-js": "^2.84.0",
     "axios": "^1.13.2",
     "react": "^19.2.0",

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../services/auth';
 import { migrateTrainingPlansFromLocalStorage, getTrainingPlans, deleteTrainingPlan, saveTrainingPlan } from '../services/supabase';
-import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
+import TrainingPlanView from '../components/TrainingPlanView';
 
 const TrainingPlanPage = () => {
   const navigate = useNavigate();
@@ -71,39 +71,116 @@ const TrainingPlanPage = () => {
   };
 
   const handleViewPlan = (plan) => {
-    const calendarPlan = {
-      startdate: plan.startDate,
-      enddate: plan.endDate,
-      week1: plan.weeks.week1,
-      week2: plan.weeks.week2,
-      week3: plan.weeks.week3,
-      week4: plan.weeks.week4
-    };
-    setSelectedPlan({ ...plan, calendarData: calendarPlan });
+    // Convert old format to new format if needed
+    let planData;
+    
+    if (plan.schedule) {
+      // Already in new format
+      planData = plan;
+    } else if (plan.weeks) {
+      // Convert old format to new format
+      planData = {
+        meta: {
+          plan_id: plan.id,
+          plan_name: plan.planName || getPlanTypeLabel(plan.planType),
+          plan_type: plan.planType,
+          athlete_level: plan.athleteLevel || 'Intermediate',
+          total_duration_weeks: plan.totalDurationWeeks || 4,
+          created_at: plan.createdAt,
+          start_date: plan.startDate
+        },
+        periodization_overview: {
+          macrocycle_goal: plan.goal || 'Complete training plan',
+          phases: plan.phases || ['Base', 'Build', 'Peak', 'Taper']
+        },
+        schedule: [
+          {
+            week_number: 1,
+            phase_name: 'Base',
+            weekly_focus: 'Building foundation',
+            days: convertWeekToDays(plan.weeks.week1, 1)
+          },
+          {
+            week_number: 2,
+            phase_name: 'Build',
+            weekly_focus: 'Increasing intensity',
+            days: convertWeekToDays(plan.weeks.week2, 2)
+          },
+          {
+            week_number: 3,
+            phase_name: 'Peak',
+            weekly_focus: 'Peak performance',
+            days: convertWeekToDays(plan.weeks.week3, 3)
+          },
+          {
+            week_number: 4,
+            phase_name: 'Taper',
+            weekly_focus: 'Recovery and preparation',
+            days: convertWeekToDays(plan.weeks.week4, 4)
+          }
+        ]
+      };
+    } else {
+      planData = plan;
+    }
+    
+    setSelectedPlan({ ...plan, planData });
+  };
+
+  // Helper function to convert old week format to new days format
+  const convertWeekToDays = (week, weekNumber) => {
+    if (!week || typeof week !== 'object') {
+      // Return default week structure
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      return days.map((dayName, index) => ({
+        day_name: dayName,
+        day_index: index + 1,
+        is_rest_day: index % 2 === 0,
+        is_completed: false,
+        activity_category: index % 2 === 0 ? 'REST' : 'RUN',
+        activity_title: index % 2 === 0 ? 'Rest day' : 'Easy Run',
+        total_estimated_duration_min: index % 2 === 0 ? 0 : 30,
+        workout_structure: index % 2 === 0 ? [] : [
+          {
+            segment_type: 'MAIN',
+            description: 'Easy running',
+            duration_value: 30,
+            duration_unit: 'min',
+            intensity_zone: 2
+          }
+        ]
+      }));
+    }
+    
+    // If week is already in new format (has days array), return it
+    if (Array.isArray(week.days)) {
+      return week.days;
+    }
+    
+    // Otherwise, try to convert from old format
+    return [];
   };
 
   const handleClosePlan = () => {
     setSelectedPlan(null);
   };
 
-  const handleSavedPlanChange = async (updatedPlan) => {
+  const handlePlanUpdate = async (updatedPlanData) => {
     if (!selectedPlan || !selectedPlan.id) return;
     
     try {
+      // Convert new format back to database format if needed
       const planToUpdate = {
         id: selectedPlan.id,
-        planType: selectedPlan.planType,
-        startDate: updatedPlan.startdate,
-        endDate: updatedPlan.enddate,
+        planType: updatedPlanData.meta?.plan_type || selectedPlan.planType,
+        startDate: updatedPlanData.meta?.start_date || selectedPlan.startDate,
+        endDate: selectedPlan.endDate,
         weeklyHours: selectedPlan.weeklyHours || null,
-        weeks: {
-          week1: updatedPlan.week1,
-          week2: updatedPlan.week2,
-          week3: updatedPlan.week3,
-          week4: updatedPlan.week4
-        }
+        planData: updatedPlanData // Store full plan data
       };
 
+      // TODO: Update saveTrainingPlan to handle new format
+      // For now, we'll save the planData as JSON in weeks field
       const result = await saveTrainingPlan(planToUpdate);
       
       if (result.error) {
@@ -113,10 +190,10 @@ const TrainingPlanPage = () => {
       }
 
       const updatedPlans = savedPlans.map(p => 
-        p.id === selectedPlan.id ? result.data : p
+        p.id === selectedPlan.id ? { ...result.data, planData: updatedPlanData } : p
       );
       setSavedPlans(updatedPlans);
-      setSelectedPlan({ ...result.data, calendarData: updatedPlan });
+      setSelectedPlan({ ...result.data, planData: updatedPlanData });
     } catch (err) {
       console.error('Error updating plan:', err);
       alert(`Failed to update plan: ${err.message}`);
@@ -200,10 +277,9 @@ const TrainingPlanPage = () => {
                   {selectedPlan && 
                    selectedPlan.id === plan.id && (
                     <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                      <TrainingPlanCalendar
-                        planData={selectedPlan.calendarData}
-                        onPlanChange={handleSavedPlanChange}
-                        planType={plan.planType}
+                      <TrainingPlanView
+                        planData={selectedPlan.planData || selectedPlan}
+                        onPlanUpdate={handlePlanUpdate}
                       />
                     </div>
                   )}

@@ -131,6 +131,49 @@ export const PLAN_TYPE_STRATEGIES = {
 };
 
 /**
+ * Adaptation scenarios for training plan adjustments
+ * Each scenario provides specific instructions for plan modification
+ */
+export const ADAPTATION_SCENARIOS = {
+  MICRO_ADJUSTMENT: `### SCENARIO A: MICRO-ADJUSTMENT (Verschiebung)
+
+**Use Case:** User sagt: "Ich kann heute nicht laufen, verschieb das auf morgen."
+
+**Instruction:** 
+- Shift the workout from today to tomorrow. 
+- Adjust the rest of the week to ensure there are no more than 3 consecutive running days. 
+- Keep the total volume similar.
+- Maintain the same intensity zones as originally planned.
+- Only reschedule, do not add extra workouts to "catch up".`,
+
+  REGRESSION: `### SCENARIO B: REGRESSION (Krankheit/Verletzung)
+
+**Use Case:** User sagt: "Ich war 5 Tage krank." oder "Ich hatte eine Verletzung."
+
+**Instruction:**
+- Apply a 'Return to Play' protocol.
+- Scrape the planned hard sessions for the next 7 days.
+- Replace them with easy aerobic runs at 50% of previous duration.
+- All intensity must be Zone 1 or Zone 2 only (NO high-intensity intervals).
+- Ramp up slowly: Week 1 = 50% volume, Week 2 = 70% volume, Week 3 = 90% volume.
+- If user was sick for more than 3 days, add 2-3 extra rest days before resuming.
+- Cancel any scheduled intervals, tempo runs, or high-intensity work for at least 7 days.`,
+
+  RECALIBRATION: `### SCENARIO C: RECALIBRATION (Zu schwer/Zu leicht)
+
+**Use Case:** Strava Daten zeigen: User läuft Puls 170 bei "Easy Runs" oder User Feedback: "Das war zu schwer/zu leicht."
+
+**Instruction:**
+- The user is training too hard on easy days OR the plan intensity is mismatched.
+- Rewrite the descriptions for the next 2 weeks to emphasize 'Walking breaks' and 'Nose breathing' for easy runs.
+- Reduce the planned weekly distance by 10% to lower stress.
+- Adjust intensity zones: If user was running too hard, make easy runs explicitly Zone 1-2 with walking breaks.
+- If user found it too easy, gradually increase intensity but maintain 80/20 rule (80% easy, 20% hard).
+- Recalibrate paces/intensities based on user feedback or heart rate data.
+- Ensure proper recovery between hard sessions.`
+};
+
+/**
  * JSON Schema constraints for training plan output
  */
 export const JSON_SCHEMA_CONSTRAINTS = `
@@ -368,4 +411,216 @@ export const getTrainingPlanStep = (id) =>
   trainingPlanSequence.find((step) => step.id === id);
 
 export const getDefaultTrainingPlanStep = () => trainingPlanSequence[0];
+
+/**
+ * Auto-detect adaptation scenario based on user feedback and execution summary
+ * @param {string} userFeedback - User's feedback/reason
+ * @param {Object} executionSummary - Summary of recent execution
+ * @returns {string} Scenario key ('MICRO_ADJUSTMENT', 'REGRESSION', 'RECALIBRATION', or 'AUTO_DETECT')
+ */
+export const detectAdaptationScenario = (userFeedback = '', executionSummary = {}) => {
+  const feedbackLower = (userFeedback || '').toLowerCase();
+  const summaryText = JSON.stringify(executionSummary).toLowerCase();
+
+  // Check for sickness/injury keywords
+  if (
+    feedbackLower.includes('krank') ||
+    feedbackLower.includes('sick') ||
+    feedbackLower.includes('illness') ||
+    feedbackLower.includes('erkältung') ||
+    feedbackLower.includes('verletzung') ||
+    feedbackLower.includes('injury') ||
+    summaryText.includes('sick') ||
+    summaryText.includes('injury')
+  ) {
+    return 'REGRESSION';
+  }
+
+  // Check for too hard/too easy keywords
+  if (
+    feedbackLower.includes('zu schwer') ||
+    feedbackLower.includes('too hard') ||
+    feedbackLower.includes('zu leicht') ||
+    feedbackLower.includes('too easy') ||
+    feedbackLower.includes('puls') ||
+    feedbackLower.includes('heart rate') ||
+    summaryText.includes('heart rate') ||
+    summaryText.includes('too hard') ||
+    summaryText.includes('too easy')
+  ) {
+    return 'RECALIBRATION';
+  }
+
+  // Check for simple rescheduling
+  if (
+    feedbackLower.includes('verschieb') ||
+    feedbackLower.includes('shift') ||
+    feedbackLower.includes('reschedule') ||
+    feedbackLower.includes('morgen') ||
+    feedbackLower.includes('tomorrow') ||
+    feedbackLower.includes('heute nicht') ||
+    feedbackLower.includes('can\'t today')
+  ) {
+    return 'MICRO_ADJUSTMENT';
+  }
+
+  // Default to micro-adjustment for simple cases
+  return 'MICRO_ADJUSTMENT';
+};
+
+/**
+ * Generate adaptation prompt for modifying an existing training plan
+ * @param {string} currentDate - Current date in YYYY-MM-DD format
+ * @param {Object} planData - Original training plan data (with schedule array)
+ * @param {Object} executionSummary - Summary of what user actually did vs. planned
+ * @param {string} userFeedback - User's feedback/reason for adjustment
+ * @param {string} scenario - Adaptation scenario ('MICRO_ADJUSTMENT', 'REGRESSION', 'RECALIBRATION', or 'AUTO_DETECT')
+ * @returns {string} Complete prompt string ready for LLM
+ */
+export const getAdaptationPrompt = (
+  currentDate,
+  planData,
+  executionSummary = {},
+  userFeedback = '',
+  scenario = 'AUTO_DETECT'
+) => {
+  // Auto-detect scenario if not specified
+  if (scenario === 'AUTO_DETECT') {
+    scenario = detectAdaptationScenario(userFeedback, executionSummary);
+  }
+
+  // Get scenario instructions
+  const scenarioInstruction = ADAPTATION_SCENARIOS[scenario] || ADAPTATION_SCENARIOS.MICRO_ADJUSTMENT;
+
+  // Extract remaining schedule (weeks from current date onwards)
+  // Use getRemainingSchedule helper if available, otherwise use schedule directly
+  let remainingSchedule = planData.schedule || [];
+  
+  // Try to import and use getRemainingSchedule if available
+  // Note: This is a circular dependency workaround - in production, consider moving helpers
+  try {
+    // For now, we'll use the schedule as-is and filter in the prompt
+    // The actual filtering should be done by the caller using getRemainingSchedule
+    if (planData.schedule && Array.isArray(planData.schedule)) {
+      remainingSchedule = planData.schedule;
+    }
+  } catch (e) {
+    // Fallback to direct schedule
+    remainingSchedule = planData.schedule || [];
+  }
+  
+  // Calculate plan phase and week (simplified - would need proper date calculation)
+  const planPhase = planData.periodization_overview?.phases?.[0] || 'Unknown';
+  const currentWeek = remainingSchedule.length > 0 ? remainingSchedule[0].week_number : 1;
+  const totalWeeks = planData.meta?.total_duration_weeks || remainingSchedule.length;
+
+  // Calculate compliance (simplified - would need actual execution data)
+  const compliance = executionSummary.compliance || 'Unknown';
+
+  // Build context injection
+  const contextInjection = `CURRENT STATUS:
+
+- Current Date: ${currentDate}
+- Plan Phase: ${planPhase} (Week ${currentWeek} of ${totalWeeks})
+- Compliance Last 7 Days: ${compliance}
+- User Feedback: "${userFeedback}" ${executionSummary.reason ? `(Reason: ${executionSummary.reason})` : ''}
+- Original Next Workout: ${executionSummary.nextWorkout || 'See remaining schedule below'}`;
+
+  // Build the complete prompt
+  const prompt = `You are an expert adaptive running coach.
+
+Your task is to MODIFY an existing training plan based on the athlete's recent performance and feedback.
+
+${contextInjection}
+
+INPUT CONTEXT:
+
+1. **Original Plan:** ${JSON.stringify(remainingSchedule, null, 2)}
+
+2. **Recent Execution:** ${JSON.stringify(executionSummary, null, 2)}
+
+3. **User Reason/Feedback:** "${userFeedback}"
+
+CORE ADAPTATION RULES:
+
+1. **The "No Catch-Up" Rule:** NEVER try to squeeze missed distance from the past into the immediate future. Lost miles are gone. Adding them back increases injury risk immediately.
+
+2. **Sickness Protocol:** If the user reported sickness:
+   - Reduce intensity for the next 3-5 days to Zone 1/2 only.
+   - Reduce volume by 30-50% for the first week back.
+   - Cancel any high-intensity intervals for this week.
+
+3. **"Life Happened" (Busy) Protocol:** If the user missed workouts due to time constraints:
+   - Reschedule key sessions (Long Run) to the next available day, BUT only if it doesn't eliminate a rest day before another hard session.
+   - If the week is overloaded, prioritize the Long Run and drop a short recovery run.
+
+4. **Fatigue/Too Hard Protocol:** If user feedback indicates burnout or failed workouts:
+   - Insert an immediate "mini-taper" (2-3 days of rest or very easy runs).
+   - Recalibrate future paces/intensities slightly downwards.
+
+${scenarioInstruction}
+
+OUTPUT TASK:
+
+Generate an UPDATED JSON object for the **remaining schedule only** (starting from ${currentDate}).
+
+Use the same universal JSON schema as the original plan.
+
+IMPORTANT:
+
+- Keep the \`plan_id\` but append a version tag to metadata (e.g. "v2-adjusted").
+- If the goal (e.g., Marathon date) is now unrealistic due to the missed training, add a \`warning_message\` in the \`meta\` field explaining why.
+- Output ONLY valid JSON. Do not add conversational text before or after the JSON.
+
+JSON SCHEMA (same as original):
+
+{
+  "meta": {
+    "plan_id": "UUID_STRING",
+    "plan_name": "STRING",
+    "plan_type": "ENUM_STRING", 
+    "athlete_level": "ENUM_STRING",
+    "total_duration_weeks": "INTEGER",
+    "created_at": "2023-10-27",
+    "start_date": "YYYY-MM-DD",
+    "version": "v2-adjusted",
+    "warning_message": "OPTIONAL_STRING"
+  },
+  "periodization_overview": {
+    "macrocycle_goal": "STRING",
+    "phases": ["STRING", "STRING", "STRING"] 
+  },
+  "schedule": [
+    {
+      "week_number": "INTEGER",
+      "phase_name": "STRING",
+      "weekly_focus": "STRING",
+      "days": [
+        {
+          "day_name": "ENUM_STRING",
+          "day_index": "INTEGER",
+          "is_rest_day": "BOOLEAN",
+          "is_completed": "BOOLEAN",
+          "activity_category": "ENUM_STRING",
+          "activity_title": "STRING",
+          "total_estimated_duration_min": "INTEGER",
+          "workout_structure": [
+            {
+              "segment_type": "ENUM_STRING",
+              "description": "STRING",
+              "duration_value": "NUMBER",
+              "duration_unit": "ENUM_STRING",
+              "intensity_zone": "INTEGER"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+${JSON_SCHEMA_CONSTRAINTS}`;
+
+  return prompt;
+};
 

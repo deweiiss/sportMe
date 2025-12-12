@@ -818,6 +818,185 @@ export const deleteTrainingPlan = async (planId) => {
 };
 
 /**
+ * Calculate compliance and missed workouts for a training plan
+ * @param {Object} planData - Training plan data with schedule array
+ * @param {string} currentDate - Current date in YYYY-MM-DD format
+ * @param {Array} completedWorkouts - Array of completed workout dates (optional)
+ * @returns {Object} Delta analysis with compliance, missed workouts, etc.
+ */
+export const calculatePlanDelta = (planData, currentDate, completedWorkouts = []) => {
+  try {
+    const schedule = planData.schedule || [];
+    const currentDateObj = new Date(currentDate);
+    
+    // Find all workouts up to current date
+    const pastWorkouts = [];
+    const futureWorkouts = [];
+    let totalPlanned = 0;
+    let totalCompleted = 0;
+    const missedWorkouts = [];
+
+    schedule.forEach(week => {
+      if (!week.days) return;
+      
+      week.days.forEach(day => {
+        if (!day.is_rest_day && day.activity_category !== 'REST') {
+          totalPlanned++;
+          
+          // Calculate day date (simplified - would need proper date calculation from start_date)
+          // For now, we'll use day_index to approximate
+          const dayDate = new Date(currentDateObj);
+          dayDate.setDate(dayDate.getDate() + (day.day_index || 0) - 1);
+          
+          const dayDateStr = dayDate.toISOString().split('T')[0];
+          
+          if (dayDate <= currentDateObj) {
+            pastWorkouts.push({
+              date: dayDateStr,
+              dayIndex: day.day_index,
+              weekNumber: week.week_number,
+              activityTitle: day.activity_title,
+              isCompleted: day.is_completed || completedWorkouts.includes(dayDateStr)
+            });
+            
+            if (day.is_completed || completedWorkouts.includes(dayDateStr)) {
+              totalCompleted++;
+            } else {
+              missedWorkouts.push({
+                date: dayDateStr,
+                weekNumber: week.week_number,
+                activityTitle: day.activity_title,
+                activityCategory: day.activity_category
+              });
+            }
+          } else {
+            futureWorkouts.push({
+              date: dayDateStr,
+              dayIndex: day.day_index,
+              weekNumber: week.week_number,
+              activityTitle: day.activity_title
+            });
+          }
+        }
+      });
+    });
+
+    // Calculate compliance percentage (last 7 days)
+    const sevenDaysAgo = new Date(currentDateObj);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentPlanned = pastWorkouts.filter(w => new Date(w.date) >= sevenDaysAgo).length;
+    const recentCompleted = pastWorkouts.filter(w => 
+      new Date(w.date) >= sevenDaysAgo && w.isCompleted
+    ).length;
+    
+    const complianceLast7Days = recentPlanned > 0 
+      ? Math.round((recentCompleted / recentPlanned) * 100) 
+      : 100;
+
+    // Overall compliance
+    const overallCompliance = totalPlanned > 0 
+      ? Math.round((totalCompleted / totalPlanned) * 100) 
+      : 100;
+
+    return {
+      currentDate,
+      totalPlanned,
+      totalCompleted,
+      overallCompliance: `${overallCompliance}%`,
+      complianceLast7Days: `${complianceLast7Days}%`,
+      missedWorkouts,
+      pastWorkouts,
+      futureWorkouts,
+      nextWorkout: futureWorkouts.length > 0 ? futureWorkouts[0] : null
+    };
+  } catch (err) {
+    console.error('Error calculating plan delta:', err);
+    return {
+      currentDate,
+      totalPlanned: 0,
+      totalCompleted: 0,
+      overallCompliance: '0%',
+      complianceLast7Days: '0%',
+      missedWorkouts: [],
+      pastWorkouts: [],
+      futureWorkouts: [],
+      nextWorkout: null,
+      error: err.message
+    };
+  }
+};
+
+/**
+ * Extract remaining schedule from a training plan starting from a specific date
+ * @param {Object} planData - Full training plan data
+ * @param {string} startDate - Date to start from (YYYY-MM-DD)
+ * @returns {Object} Plan data with only remaining schedule
+ */
+export const getRemainingSchedule = (planData, startDate) => {
+  try {
+    const schedule = planData.schedule || [];
+    const startDateObj = new Date(startDate);
+    
+    // Filter weeks and days that are on or after start date
+    const remainingSchedule = schedule.map(week => {
+      const remainingDays = (week.days || []).filter(day => {
+        if (day.is_rest_day || day.activity_category === 'REST') {
+          return true; // Keep rest days
+        }
+        
+        // Calculate day date (simplified - would need proper date calculation)
+        const dayDate = new Date(startDateObj);
+        dayDate.setDate(dayDate.getDate() + (day.day_index || 0) - 1);
+        
+        return dayDate >= startDateObj;
+      });
+      
+      return {
+        ...week,
+        days: remainingDays
+      };
+    }).filter(week => week.days.length > 0);
+
+    return {
+      ...planData,
+      schedule: remainingSchedule
+    };
+  } catch (err) {
+    console.error('Error extracting remaining schedule:', err);
+    return planData;
+  }
+};
+
+/**
+ * Create execution summary for adaptation prompt
+ * @param {Object} deltaAnalysis - Result from calculatePlanDelta
+ * @param {string} userFeedback - User's feedback/reason
+ * @returns {Object} Execution summary object
+ */
+export const createExecutionSummary = (deltaAnalysis, userFeedback = '') => {
+  const missedCount = deltaAnalysis.missedWorkouts?.length || 0;
+  const recentMissed = deltaAnalysis.missedWorkouts?.filter(w => {
+    const workoutDate = new Date(w.date);
+    const sevenDaysAgo = new Date(deltaAnalysis.currentDate);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    return workoutDate >= sevenDaysAgo;
+  }).length || 0;
+
+  return {
+    compliance: deltaAnalysis.complianceLast7Days,
+    overallCompliance: deltaAnalysis.overallCompliance,
+    missedWorkoutsCount: missedCount,
+    recentMissedCount: recentMissed,
+    missedWorkouts: deltaAnalysis.missedWorkouts?.slice(0, 5) || [], // Last 5 missed
+    nextWorkout: deltaAnalysis.nextWorkout,
+    reason: userFeedback || 'No reason provided',
+    completedWorkouts: deltaAnalysis.totalCompleted,
+    plannedWorkouts: deltaAnalysis.totalPlanned
+  };
+};
+
+/**
  * Migrate training plans from localStorage to database
  * This is a one-time migration helper that can be called on app initialization
  * @returns {Promise<{migrated: number, error?: string}>}

@@ -11,6 +11,7 @@ import {
 import { extractProfileData } from '../services/profileExtraction';
 import { getUserContext } from '../services/contextRetrieval';
 import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prompts';
+import { getTrainingPlans } from '../services/supabase';
 
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
@@ -18,12 +19,14 @@ const ChatPanel = ({ width = 320 }) => {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [currentChatTitle, setCurrentChatTitle] = useState('New conversation');
   const [showSessions, setShowSessions] = useState(false);
+  const [showHistoryView, setShowHistoryView] = useState(false);
   const [activeSequenceStepId, setActiveSequenceStepId] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const [userContext, setUserContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const [activePlan, setActivePlan] = useState(null);
   const [selectedModel, setSelectedModel] = useState(() => {
     // Load from localStorage, default to 'gemini'
     const saved = localStorage.getItem('chatModel');
@@ -70,6 +73,36 @@ const ChatPanel = ({ width = 320 }) => {
     };
     window.addEventListener('startTrainingPlanSequence', handler);
     return () => window.removeEventListener('startTrainingPlanSequence', handler);
+  }, []);
+
+  // Load active plan on mount
+  useEffect(() => {
+    const loadActivePlan = async () => {
+      try {
+        const result = await getTrainingPlans();
+        if (result.error || !result.data) return;
+        
+        const plans = result.data || [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Find active plan (currently running) or newest plan
+        const active = plans.find(plan => {
+          if (!plan.startDate || !plan.endDate) return false;
+          const startDate = new Date(plan.startDate);
+          const endDate = new Date(plan.endDate);
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(23, 59, 59, 999);
+          return today >= startDate && today <= endDate;
+        }) || (plans.length > 0 ? plans[0] : null);
+        
+        setActivePlan(active);
+      } catch (err) {
+        console.error('Error loading active plan:', err);
+      }
+    };
+    
+    loadActivePlan();
   }, []);
 
   // Scroll to bottom when messages change
@@ -119,7 +152,25 @@ const ChatPanel = ({ width = 320 }) => {
     setCurrentChatTitle(session.title || 'Conversation');
     setActiveSequenceStepId(null);
     setShowSessions(false);
+    setShowHistoryView(false);
     await loadChatHistory(session.id);
+  };
+
+  const startAdaptPlanFlow = async () => {
+    if (!activePlan) return;
+    
+    const newChatId = await startNewChat('Adjust training plan');
+    if (!newChatId) return;
+    
+    // TODO: Load adaptation prompt and send as first message
+    // For now, just start a chat with a message about adjusting the plan
+    const initialMessage = {
+      role: 'assistant',
+      content: `I'll help you adjust your training plan "${activePlan.planName || 'Training Plan'}". What would you like to change? For example:\n\n- "I missed some workouts this week"\n- "I was sick for 3 days"\n- "The workouts are too hard/easy"`,
+      createdAt: new Date().toISOString()
+    };
+    setMessages([initialMessage]);
+    await saveChatMessage('assistant', initialMessage.content, newChatId);
   };
 
   const startTrainingPlanFlow = async () => {
@@ -368,43 +419,45 @@ const ChatPanel = ({ width = 320 }) => {
             New chat
           </button>
           <button
-            onClick={() => setShowSessions(prev => !prev)}
+            onClick={() => setShowHistoryView(prev => !prev)}
             className="px-3 py-2 rounded-md border border-lavender-blush-300 dark:border-lavender-blush-700 text-sm font-medium text-lavender-blush-900 dark:text-lavender-blush-50"
           >
-            {showSessions ? 'Hide' : 'Chats'}
+            {showHistoryView ? 'Back to Chat' : 'Previous Chats'}
           </button>
         </div>
       </div>
 
-      {/* Sessions list */}
-      {showSessions && (
-        <div className="border-b border-lavender-blush-200 dark:border-lavender-blush-800 max-h-48 overflow-y-auto">
-          {chatSessions.length === 0 && (
-            <div className="px-4 py-3 text-sm text-lavender-blush-600 dark:text-lavender-blush-400">
+      {/* History View or Chat Messages Area */}
+      {showHistoryView ? (
+        <div className="flex-1 overflow-y-auto p-4">
+          <h4 className="text-sm font-semibold text-lavender-blush-900 dark:text-lavender-blush-50 mb-3">Previous Chats</h4>
+          {chatSessions.length === 0 ? (
+            <div className="text-sm text-lavender-blush-600 dark:text-lavender-blush-400 text-center italic py-8">
               No chats yet.
             </div>
+          ) : (
+            <div className="space-y-2">
+              {chatSessions.map(session => (
+                <button
+                  key={session.id}
+                  className={`w-full text-left px-4 py-3 rounded-lg border border-lavender-blush-200 dark:border-lavender-blush-700 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 transition-colors ${
+                    session.id === currentChatId ? 'bg-lavender-blush-100 dark:bg-lavender-blush-800 border-yale-blue-500' : ''
+                  }`}
+                  onClick={() => selectChat(session)}
+                >
+                  <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
+                    {session.title || 'Conversation'}
+                  </div>
+                  <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 mt-1">
+                    {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
-          {chatSessions.map(session => (
-            <button
-              key={session.id}
-              className={`w-full text-left px-4 py-2 text-sm border-b border-lavender-blush-100 dark:border-lavender-blush-800 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 ${
-                session.id === currentChatId ? 'bg-lavender-blush-100 dark:bg-lavender-blush-800' : ''
-              }`}
-              onClick={() => selectChat(session)}
-            >
-              <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
-                {session.title || 'Conversation'}
-              </div>
-              <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400">
-                {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
-              </div>
-            </button>
-          ))}
         </div>
-      )}
-
-      {/* Chat Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      ) : (
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-sm text-lavender-blush-600 dark:text-lavender-blush-400 text-center italic">
             No messages yet. Start a conversation!
@@ -474,6 +527,29 @@ const ChatPanel = ({ width = 320 }) => {
         )}
         <div ref={messagesEndRef} />
       </div>
+      )}
+
+      {/* Quick Action Buttons */}
+      {!showHistoryView && (
+        <div className="px-4 pt-2 pb-2 border-t border-lavender-blush-200 dark:border-lavender-blush-800">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={startTrainingPlanFlow}
+              className="px-3 py-1.5 rounded-full bg-yale-blue-100 dark:bg-yale-blue-900 text-yale-blue-700 dark:text-yale-blue-200 text-xs font-medium hover:bg-yale-blue-200 dark:hover:bg-yale-blue-800 transition-colors"
+            >
+              + New Training Plan
+            </button>
+            {activePlan && (
+              <button
+                onClick={startAdaptPlanFlow}
+                className="px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 text-xs font-medium hover:bg-green-200 dark:hover:bg-green-800 transition-colors"
+              >
+                ✏️ Adjust Active Plan
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Chat Input */}
       <div className="p-4 border-t border-lavender-blush-200 dark:border-lavender-blush-800">

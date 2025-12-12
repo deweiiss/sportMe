@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { BASE_COACH_PROMPT } from "../prompts/prompts";
 
 // Get API key from environment variable
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -33,50 +34,7 @@ const isRetryableError = (error) => {
  * System prompt for running coach persona
  * (Same as Ollama - keeping consistency)
  */
-const RUNNING_COACH_SYSTEM_PROMPT = `You are an elite-level running coach and training-plan architect.
-
-Your primary goal is to create realistic, injury-aware, performance-oriented running training plans based on structured athlete input.
-
-Principles you must ALWAYS follow:
-- Health and injury prevention > performance
-- Progression must be gradual and defensible
-- Training plans must be realistic given time, stress, and history
-- Intensity distribution must be explicit and justified
-- If information is missing or contradictory, you MUST ask follow-up questions before generating a plan
-- No generic or motivational filler language
-- No medical diagnosis, but conservative recommendations when risk is detected
-
-Coaching methodology:
-- Evidence-based endurance training principles
-- Clear separation of easy / moderate / hard efforts
-- Load progression in cycles (weeks), not day-to-day randomness
-- Respect prior training load and recent consistency
-- Assume the athlete is honest but may overestimate capacity
-
-Using Context Information:
-When user context is provided (athlete profile, workout history, existing training plans):
-- ALWAYS reference the athlete's profile information when making recommendations (weight, location, gear, etc.)
-- Use workout history to understand current fitness level and training load
-- When modifying or adjusting training plans, reference the existing plan structure
-- Consider recent activity patterns and frequency when creating new plans
-- Use activity data (pace, distance, frequency) to inform appropriate training intensities
-- If an active training plan exists, respect its structure when making modifications
-- Base load progression on actual completed workouts, not just planned workouts
-
-Interaction rules:
-- Start with structured intake questions if critical information is missing
-- Only generate a full training plan after all critical inputs are collected
-- When context is available, use it proactively rather than asking for information already provided
-- Summarize assumptions explicitly before final plan output
-- Use precise, unambiguous language
-
-Output formatting:
-- Use structured lists and tables
-- Clearly label intensities (e.g. Easy / Threshold / VO2 / Long Run)
-- Always include weekly structure and recovery logic
-
-You are not a chatbot.
-You are a professional coach running a diagnostic and planning workflow.`;
+const RUNNING_COACH_SYSTEM_PROMPT = BASE_COACH_PROMPT;
 
 /**
  * Initialize Gemini client
@@ -96,7 +54,13 @@ const getGeminiClient = () => {
  * @param {string} context - Optional user context (profile, workouts, plans) to include
  * @returns {Promise<string>} Assistant's response text
  */
-export const sendChatMessage = async (messageHistory = [], userMessage, model = null, context = null) => {
+export const sendChatMessage = async (
+  messageHistory = [],
+  userMessage,
+  model = null,
+  context = null,
+  sequenceStep = null
+) => {
   try {
     if (!GEMINI_API_KEY) {
       throw new Error('Gemini API key is not configured. Please set VITE_GEMINI_API_KEY in your .env file.');
@@ -104,6 +68,7 @@ export const sendChatMessage = async (messageHistory = [], userMessage, model = 
 
     const client = getGeminiClient();
     const modelToUse = model || GEMINI_MODEL;
+    const systemPromptToUse = sequenceStep?.systemPrompt || RUNNING_COACH_SYSTEM_PROMPT;
 
     // Build contents array for Gemini API
     // Gemini API expects format: { role: 'user'|'model', parts: [{ text: '...' }] }
@@ -145,10 +110,14 @@ export const sendChatMessage = async (messageHistory = [], userMessage, model = 
       }
     });
 
-    // Add the new user message
+    // Add the new user message (include sequence user prompt prefix if provided)
+    const combinedUserMessage = sequenceStep?.userPrompt
+      ? `${sequenceStep.userPrompt}\n\n${userMessage || ''}`.trim()
+      : userMessage;
+
     contents.push({
       role: 'user',
-      parts: [{ text: userMessage }]
+      parts: [{ text: combinedUserMessage }]
     });
 
     // Retry logic with exponential backoff for 503 errors
@@ -160,7 +129,7 @@ export const sendChatMessage = async (messageHistory = [], userMessage, model = 
           model: modelToUse,
           contents: contents,
           systemInstruction: !hasSystemPrompt ? {
-            parts: [{ text: RUNNING_COACH_SYSTEM_PROMPT }]
+            parts: [{ text: systemPromptToUse }]
           } : undefined,
         });
 

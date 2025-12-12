@@ -927,24 +927,91 @@ export const migrateTrainingPlansFromLocalStorage = async () => {
 };
 
 /**
- * Get chat history for the current authenticated user
- * @param {number} limit - Maximum number of messages to fetch (default: 100)
- * @returns {Promise<{data?: Array, error?: string}>}
+ * Create a new chat session for the current user
+ * @param {string} title
  */
-export const getChatHistory = async (limit = 100) => {
+export const createChatSession = async (title = 'New conversation') => {
   try {
-    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { error: 'User not authenticated' };
+
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert({
+        user_id: user.id,
+        title
+      })
+      .select()
+      .single();
+
+    if (error) return { error: error.message };
+
+    return { data };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * List chat sessions for the current user ordered by last_updated desc
+ */
+export const listChatSessions = async (limit = 50) => {
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { error: 'User not authenticated' };
+
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('last_updated', { ascending: false })
+      .limit(limit);
+
+    if (error) return { error: error.message };
+    return { data };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Update chat session last_updated and optional title
+ */
+export const touchChatSession = async (chatId, title) => {
+  if (!chatId) return { error: 'chatId is required' };
+  try {
+    const updates = { last_updated: new Date().toISOString() };
+    if (title) updates.title = title;
+
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update(updates)
+      .eq('id', chatId);
+
+    if (error) return { error: error.message };
+    return { data: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
+ * Get chat history for a specific chat session
+ */
+export const getChatHistory = async (chatId, limit = 200) => {
+  if (!chatId) return { error: 'chatId is required' };
+  try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
       return { error: 'User not authenticated' };
     }
 
-    // Fetch chat messages from Supabase
     const { data: messages, error: messagesError } = await supabase
       .from('chat_messages')
       .select('*')
       .eq('user_id', user.id)
+      .eq('chat_id', chatId)
       .order('created_at', { ascending: true })
       .limit(limit);
 
@@ -952,7 +1019,6 @@ export const getChatHistory = async (limit = 100) => {
       return { error: messagesError.message };
     }
 
-    // Transform to frontend format
     const transformedMessages = (messages || []).map(msg => ({
       id: msg.id,
       role: msg.role,
@@ -968,24 +1034,21 @@ export const getChatHistory = async (limit = 100) => {
 
 /**
  * Save a single chat message for the current authenticated user
- * @param {string} role - Message role ('user' or 'assistant')
- * @param {string} content - Message content
- * @returns {Promise<{data?: Object, error?: string}>}
  */
-export const saveChatMessage = async (role, content) => {
+export const saveChatMessage = async (role, content, chatId, titleUpdate = null) => {
+  if (!chatId) return { error: 'chatId is required' };
   try {
-    // Get current authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
       return { error: 'User not authenticated' };
     }
 
-    // Insert message
     const { data, error } = await supabase
       .from('chat_messages')
       .insert({
         user_id: user.id,
+        chat_id: chatId,
         role: role,
         content: content
       })
@@ -996,7 +1059,9 @@ export const saveChatMessage = async (role, content) => {
       return { error: error.message };
     }
 
-    // Transform to frontend format
+    // Update session timestamp and optional title
+    await touchChatSession(chatId, titleUpdate || undefined);
+
     const transformedMessage = {
       id: data.id,
       role: data.role,
@@ -1012,26 +1077,23 @@ export const saveChatMessage = async (role, content) => {
 
 /**
  * Batch save multiple chat messages for the current authenticated user
- * @param {Array} messages - Array of { role: string, content: string } objects
- * @returns {Promise<{data?: Array, error?: string}>}
  */
-export const saveChatMessages = async (messages) => {
+export const saveChatMessages = async (messages, chatId, titleUpdate = null) => {
+  if (!chatId) return { error: 'chatId is required' };
   try {
-    // Get current authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
       return { error: 'User not authenticated' };
     }
 
-    // Prepare data for batch insert
     const dbData = messages.map(msg => ({
       user_id: user.id,
+      chat_id: chatId,
       role: msg.role,
       content: msg.content
     }));
 
-    // Insert messages
     const { data, error } = await supabase
       .from('chat_messages')
       .insert(dbData)
@@ -1041,7 +1103,8 @@ export const saveChatMessages = async (messages) => {
       return { error: error.message };
     }
 
-    // Transform to frontend format
+    await touchChatSession(chatId, titleUpdate || undefined);
+
     const transformedMessages = (data || []).map(msg => ({
       id: msg.id,
       role: msg.role,

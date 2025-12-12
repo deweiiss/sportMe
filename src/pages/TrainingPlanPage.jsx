@@ -151,9 +151,21 @@ const TrainingPlanPage = () => {
     }
   };
 
+  const startTrainingPlanChat = () => {
+    window.dispatchEvent(new Event('startTrainingPlanSequence'));
+  };
+
     return (
       <div>
-        <h1 className="text-4xl m-0 mb-8 text-gray-900 dark:text-white">Training Plan</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <h1 className="text-4xl m-0 text-gray-900 dark:text-white">Training Plan</h1>
+        <button
+          onClick={startTrainingPlanChat}
+          className="bg-yale-blue-500 hover:bg-yale-blue-600 text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all"
+        >
+          Start training plan chat
+        </button>
+      </div>
 
         {/* Saved Training Plans Section */}
         {savedPlans.length > 0 && (

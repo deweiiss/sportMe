@@ -2,12 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { sendChatMessage as sendOllamaMessage } from '../services/ollamaApi';
 import { sendChatMessage as sendGeminiMessage } from '../services/geminiApi';
-import { getChatHistory, saveChatMessage } from '../services/supabase';
+import { 
+  getChatHistory, 
+  saveChatMessage,
+  createChatSession,
+  listChatSessions
+} from '../services/supabase';
 import { extractProfileData } from '../services/profileExtraction';
 import { getUserContext } from '../services/contextRetrieval';
+import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prompts';
 
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [currentChatTitle, setCurrentChatTitle] = useState('New conversation');
+  const [showSessions, setShowSessions] = useState(false);
+  const [activeSequenceStepId, setActiveSequenceStepId] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
@@ -27,9 +38,38 @@ const ChatPanel = ({ width = 320 }) => {
     localStorage.setItem('chatModel', selectedModel);
   }, [selectedModel]);
 
-  // Load chat history on component mount
+  // Load chat sessions on mount
   useEffect(() => {
-    loadChatHistory();
+    const initializeChats = async () => {
+      const sessionsResult = await listChatSessions();
+      if (sessionsResult.error) {
+        console.error('Error loading chat sessions:', sessionsResult.error);
+        return;
+      }
+
+      const sessions = sessionsResult.data || [];
+      setChatSessions(sessions);
+
+      if (sessions.length > 0) {
+        const first = sessions[0];
+        setCurrentChatId(first.id);
+        setCurrentChatTitle(first.title || 'Conversation');
+        await loadChatHistory(first.id);
+      } else {
+        await startNewChat('New conversation');
+      }
+    };
+
+    initializeChats();
+  }, []);
+
+  // Listen for training plan sequence trigger
+  useEffect(() => {
+    const handler = async () => {
+      await startTrainingPlanFlow();
+    };
+    window.addEventListener('startTrainingPlanSequence', handler);
+    return () => window.removeEventListener('startTrainingPlanSequence', handler);
   }, []);
 
   // Scroll to bottom when messages change
@@ -37,19 +77,63 @@ const ChatPanel = ({ width = 320 }) => {
     scrollToBottom();
   }, [messages]);
 
-  const loadChatHistory = async () => {
+  const loadChatHistory = async (chatId) => {
+    if (!chatId) return;
     try {
-      const { data, error } = await getChatHistory();
+      const { data, error } = await getChatHistory(chatId);
       if (error) {
         console.error('Error loading chat history:', error);
         return;
       }
-      if (data) {
-        setMessages(data);
-      }
+      setMessages(data || []);
     } catch (err) {
       console.error('Error loading chat history:', err);
     }
+  };
+
+  const refreshSessions = async () => {
+    const sessionsResult = await listChatSessions();
+    if (!sessionsResult.error) {
+      setChatSessions(sessionsResult.data || []);
+    }
+  };
+
+  const startNewChat = async (title = 'New conversation') => {
+    const { data, error } = await createChatSession(title);
+    if (error) {
+      console.error('Error creating chat session:', error);
+      return null;
+    }
+    setChatSessions(prev => [data, ...prev]);
+    setCurrentChatId(data.id);
+    setCurrentChatTitle(data.title || title);
+    setMessages([]);
+    setActiveSequenceStepId(null);
+    await refreshSessions();
+    return data.id;
+  };
+
+  const selectChat = async (session) => {
+    if (!session) return;
+    setCurrentChatId(session.id);
+    setCurrentChatTitle(session.title || 'Conversation');
+    setActiveSequenceStepId(null);
+    setShowSessions(false);
+    await loadChatHistory(session.id);
+  };
+
+  const startTrainingPlanFlow = async () => {
+    const newChatId = await startNewChat('Training plan');
+    if (!newChatId) return;
+    const firstStep = getDefaultTrainingPlanStep();
+    setActiveSequenceStepId(firstStep.id);
+    const stepMessage = {
+      role: 'assistant',
+      content: firstStep.userPrompt,
+      createdAt: new Date().toISOString()
+    };
+    setMessages([stepMessage]);
+    await saveChatMessage('assistant', firstStep.userPrompt, newChatId);
   };
 
   const scrollToBottom = () => {
@@ -132,7 +216,9 @@ const ChatPanel = ({ width = 320 }) => {
     const userMessage = inputValue.trim();
     setInputValue('');
     
-    // Add user message to local state immediately
+    const chatId = currentChatId || await startNewChat('New conversation');
+    if (!chatId) return;
+
     const newUserMessage = {
       role: 'user',
       content: userMessage,
@@ -142,64 +228,49 @@ const ChatPanel = ({ width = 320 }) => {
     setIsLoading(true);
 
     try {
-      // Save user message to database
-      await saveChatMessage('user', userMessage);
+      await saveChatMessage('user', userMessage, chatId, currentChatTitle);
 
-      // Prepare message history for Ollama (include all previous messages)
-      // The sendChatMessage function will add the new user message, so we pass the history
       const messageHistory = messages.map(msg => ({
         role: msg.role,
         content: msg.content
       }));
 
-      // Check if we need context and fetch it if necessary
       let context = null;
       if (needsContext(userMessage) || messages.length === 0) {
-        // Fetch context on first message or when keywords detected
         context = await fetchUserContext();
       }
 
-      // Call appropriate API based on selected model
-      // Debug: Log the selected model to verify it's being read correctly
       const currentModel = selectedModel?.toLowerCase()?.trim();
-      console.log('🔍 Selected model (raw):', selectedModel);
-      console.log('🔍 Selected model (normalized):', currentModel);
-      console.log('🔍 Model comparison (gemini):', currentModel === 'gemini');
-      console.log('🔍 Model comparison (ollama):', currentModel === 'ollama');
+      const sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
       
       let assistantResponse;
-      // Explicit check: use Gemini if explicitly 'gemini', otherwise use Ollama
       if (currentModel === 'gemini') {
         console.log('✅ Calling Gemini API');
         try {
-          assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context);
+          assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context, sequenceStep);
           console.log('✅ Gemini response received, length:', assistantResponse?.length);
         } catch (geminiError) {
           console.error('❌ Gemini API error:', geminiError);
           
-          // Fallback to Ollama if Gemini is unavailable (503 error)
           if (geminiError.isUnavailable || geminiError.message?.includes('overloaded') || geminiError.message?.includes('unavailable')) {
             console.log('🔄 Gemini unavailable, falling back to Ollama...');
             try {
-              assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context);
+              assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context, sequenceStep);
               console.log('✅ Ollama fallback response received, length:', assistantResponse?.length);
               
-              // Add a note to the response that we used fallback
               assistantResponse = `*[Note: Gemini API was temporarily unavailable, using Ollama instead]*\n\n${assistantResponse}`;
             } catch (ollamaError) {
               console.error('❌ Ollama fallback also failed:', ollamaError);
-              // If Ollama also fails, throw the original Gemini error
               throw geminiError;
             }
           } else {
-            // For non-503 errors, throw immediately
             throw geminiError;
           }
         }
       } else {
         console.log('✅ Calling Ollama API (selectedModel is not "gemini")');
         try {
-          assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context);
+          assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context, sequenceStep);
           console.log('✅ Ollama response received, length:', assistantResponse?.length);
         } catch (ollamaError) {
           console.error('❌ Ollama API error:', ollamaError);
@@ -207,30 +278,43 @@ const ChatPanel = ({ width = 320 }) => {
         }
       }
 
-      // Add assistant response to local state
       const newAssistantMessage = {
         role: 'assistant',
         content: assistantResponse,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [...prev, newAssistantMessage]);
+      await saveChatMessage('assistant', assistantResponse, chatId, currentChatTitle);
 
-      // Save assistant response to database
-      await saveChatMessage('assistant', assistantResponse);
+      if (sequenceStep?.nextId) {
+        const nextStep = getTrainingPlanStep(sequenceStep.nextId);
+        if (nextStep) {
+          setActiveSequenceStepId(nextStep.id);
+          const promptMessage = {
+            role: 'assistant',
+            content: nextStep.userPrompt,
+            createdAt: new Date().toISOString()
+          };
+          setMessages(prev => [...prev, promptMessage]);
+          await saveChatMessage('assistant', nextStep.userPrompt, chatId, currentChatTitle);
+        } else {
+          setActiveSequenceStepId(null);
+        }
+      } else {
+        setActiveSequenceStepId(null);
+      }
 
-      // Trigger background profile extraction (non-blocking)
-      // Include the new messages in the conversation history for extraction
+      await refreshSessions();
+
       const updatedMessageHistory = [...messages, newUserMessage, newAssistantMessage].map(msg => ({
         role: msg.role,
         content: msg.content
       }));
       
-      // Run extraction in background without blocking
       extractProfileDataInBackground(updatedMessageHistory);
     } catch (error) {
       console.error('Error sending message:', error);
       
-      // Show error message in chat
       const errorMessage = {
         role: 'assistant',
         content: `Error: ${error.message || 'Failed to send message. Please try again.'}`,
@@ -262,9 +346,53 @@ const ChatPanel = ({ width = 320 }) => {
       style={{ width: `${width}px` }}
     >
       {/* Chat Header */}
-      <div className="p-4 border-b border-lavender-blush-200 dark:border-lavender-blush-800">
-        <h3 className="text-lg font-semibold text-lavender-blush-900 dark:text-lavender-blush-50 m-0">Chat</h3>
+      <div className="p-4 border-b border-lavender-blush-200 dark:border-lavender-blush-800 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-lavender-blush-900 dark:text-lavender-blush-50 m-0">{currentChatTitle}</h3>
+          <p className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 m-0">Model: {selectedModel}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => startNewChat('New conversation')}
+            className="px-3 py-2 rounded-md bg-yale-blue-500 text-white text-sm font-medium hover:bg-yale-blue-600"
+          >
+            New chat
+          </button>
+          <button
+            onClick={() => setShowSessions(prev => !prev)}
+            className="px-3 py-2 rounded-md border border-lavender-blush-300 dark:border-lavender-blush-700 text-sm font-medium text-lavender-blush-900 dark:text-lavender-blush-50"
+          >
+            {showSessions ? 'Hide' : 'Chats'}
+          </button>
+        </div>
       </div>
+
+      {/* Sessions list */}
+      {showSessions && (
+        <div className="border-b border-lavender-blush-200 dark:border-lavender-blush-800 max-h-48 overflow-y-auto">
+          {chatSessions.length === 0 && (
+            <div className="px-4 py-3 text-sm text-lavender-blush-600 dark:text-lavender-blush-400">
+              No chats yet.
+            </div>
+          )}
+          {chatSessions.map(session => (
+            <button
+              key={session.id}
+              className={`w-full text-left px-4 py-2 text-sm border-b border-lavender-blush-100 dark:border-lavender-blush-800 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 ${
+                session.id === currentChatId ? 'bg-lavender-blush-100 dark:bg-lavender-blush-800' : ''
+              }`}
+              onClick={() => selectChat(session)}
+            >
+              <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
+                {session.title || 'Conversation'}
+              </div>
+              <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400">
+                {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Chat Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">

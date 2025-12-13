@@ -71,95 +71,11 @@ const TrainingPlanPage = () => {
   };
 
   const handleViewPlan = (plan) => {
-    // Convert old format to new format if needed
-    let planData;
-    
-    if (plan.schedule) {
-      // Already in new format
-      planData = plan;
-    } else if (plan.weeks) {
-      // Convert old format to new format
-      planData = {
-        meta: {
-          plan_id: plan.id,
-          plan_name: plan.planName || getPlanTypeLabel(plan.planType),
-          plan_type: plan.planType,
-          athlete_level: plan.athleteLevel || 'Intermediate',
-          total_duration_weeks: plan.totalDurationWeeks || 4,
-          created_at: plan.createdAt,
-          start_date: plan.startDate
-        },
-        periodization_overview: {
-          macrocycle_goal: plan.goal || 'Complete training plan',
-          phases: plan.phases || ['Base', 'Build', 'Peak', 'Taper']
-        },
-        schedule: [
-          {
-            week_number: 1,
-            phase_name: 'Base',
-            weekly_focus: 'Building foundation',
-            days: convertWeekToDays(plan.weeks.week1, 1)
-          },
-          {
-            week_number: 2,
-            phase_name: 'Build',
-            weekly_focus: 'Increasing intensity',
-            days: convertWeekToDays(plan.weeks.week2, 2)
-          },
-          {
-            week_number: 3,
-            phase_name: 'Peak',
-            weekly_focus: 'Peak performance',
-            days: convertWeekToDays(plan.weeks.week3, 3)
-          },
-          {
-            week_number: 4,
-            phase_name: 'Taper',
-            weekly_focus: 'Recovery and preparation',
-            days: convertWeekToDays(plan.weeks.week4, 4)
-          }
-        ]
-      };
-    } else {
-      planData = plan;
-    }
-    
+    // Use planData directly (new format is required)
+    const planData = plan.planData || plan;
     setSelectedPlan({ ...plan, planData });
   };
 
-  // Helper function to convert old week format to new days format
-  const convertWeekToDays = (week, weekNumber) => {
-    if (!week || typeof week !== 'object') {
-      // Return default week structure
-      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      return days.map((dayName, index) => ({
-        day_name: dayName,
-        day_index: index + 1,
-        is_rest_day: index % 2 === 0,
-        is_completed: false,
-        activity_category: index % 2 === 0 ? 'REST' : 'RUN',
-        activity_title: index % 2 === 0 ? 'Rest day' : 'Easy Run',
-        total_estimated_duration_min: index % 2 === 0 ? 0 : 30,
-        workout_structure: index % 2 === 0 ? [] : [
-          {
-            segment_type: 'MAIN',
-            description: 'Easy running',
-            duration_value: 30,
-            duration_unit: 'min',
-            intensity_zone: 2
-          }
-        ]
-      }));
-    }
-    
-    // If week is already in new format (has days array), return it
-    if (Array.isArray(week.days)) {
-      return week.days;
-    }
-    
-    // Otherwise, try to convert from old format
-    return [];
-  };
 
   const handleClosePlan = () => {
     setSelectedPlan(null);
@@ -179,8 +95,6 @@ const TrainingPlanPage = () => {
         planData: updatedPlanData // Store full plan data
       };
 
-      // TODO: Update saveTrainingPlan to handle new format
-      // For now, we'll save the planData as JSON in weeks field
       const result = await saveTrainingPlan(planToUpdate);
       
       if (result.error) {
@@ -249,10 +163,19 @@ const TrainingPlanPage = () => {
           <div className="mb-12">
             <h2 className="text-3xl m-0 mb-6 text-gray-900 dark:text-white">Saved Training Plans</h2>
             <div className="flex flex-col gap-6">
-              {savedPlans.map((plan, index) => (
+              {savedPlans.map((plan, index) => {
+                const planName = plan.planData?.meta?.plan_name || getPlanTypeLabel(plan.planType);
+                return (
                 <div key={index} className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg">
                   <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
-                    <h3 className="m-0 text-xl text-gray-900 dark:text-white">{getPlanTypeLabel(plan.planType)}</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="m-0 text-xl text-gray-900 dark:text-white">{planName}</h3>
+                      {plan.isActive && (
+                        <span className="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 text-xs font-medium">
+                          Active
+                        </span>
+                      )}
+                    </div>
                     <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
                       {formatPlanDate(plan.startDate)} - {formatPlanDate(plan.endDate)}
                     </span>
@@ -284,7 +207,8 @@ const TrainingPlanPage = () => {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
           )}

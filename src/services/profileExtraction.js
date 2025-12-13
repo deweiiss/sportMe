@@ -39,7 +39,7 @@ Return a valid JSON object with the following structure:
     "shoes": array of shoe names/descriptions or null
   },
   "freeTextInfo": [
-    array of strings containing important information not directly mapping to profile fields (e.g., injuries, training preferences, goals, environment, health conditions, etc.)
+    array of strings containing important information not directly mapping to profile fields
   ]
 }
 
@@ -50,7 +50,20 @@ Rules:
 - For birthday, use YYYY-MM-DD format if full date is given, or null if incomplete
 - For sex/gender, extract "M" or "F" only if explicitly stated
 - For bikes and shoes, extract as arrays of names if mentioned
-- For freeTextInfo, include important contextual information that doesn't fit into structured fields (injuries, training goals, environmental preferences, health issues, etc.)
+
+CRITICAL: freeTextInfo extraction rules:
+- ONLY include information directly relevant to creating safe and effective training plans
+- ONLY include:
+  * Training-related: training history, preferences, goals, plans, workout patterns, training frequency, training load
+  * Sport-related: running experience, race history, performance data, athletic background, PRs, race distances
+  * Health-related: injuries, medical conditions, physical limitations, recovery needs, health constraints, pain points
+- DO NOT include:
+  * General conversation or casual chat
+  * Personal details unrelated to training (hobbies, work details, family info unless they directly impact training availability)
+  * Off-topic information
+  * Small talk or social conversation
+  * Information that does not help in creating or adjusting training plans
+
 - Return ONLY valid JSON, no additional text or explanation`;
 
     // User prompt with conversation

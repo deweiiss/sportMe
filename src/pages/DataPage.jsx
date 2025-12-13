@@ -5,7 +5,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { getAccessToken, getActivities, clearStravaData, getStravaAthleteId } from '../services/stravaApi';
 import { getActivitiesFromSupabase, deleteUserStravaData, getTrainingPlans, saveTrainingPlan, deleteTrainingPlan, migrateTrainingPlansFromLocalStorage } from '../services/supabase';
 import { signOut } from '../services/auth';
-import TrainingPlanCalendar from '../components/TrainingPlanCalendar';
+// TrainingPlanCalendar removed - uses legacy week1-week4 format
 
 // Helper function to get current week range (Monday-Sunday)
 const getCurrentWeekRange = () => {
@@ -272,39 +272,26 @@ const DataPage = () => {
   };
 
   const handleViewPlan = (plan) => {
-    // Convert saved plan format to calendar format
-    const calendarPlan = {
-      startdate: plan.startDate,
-      enddate: plan.endDate,
-      week1: plan.weeks.week1,
-      week2: plan.weeks.week2,
-      week3: plan.weeks.week3,
-      week4: plan.weeks.week4
-    };
-    setSelectedPlan({ ...plan, calendarData: calendarPlan });
+    // Use planData directly (new format is required)
+    setSelectedPlan({ ...plan, planData: plan.planData || plan });
   };
 
   const handleClosePlan = () => {
     setSelectedPlan(null);
   };
 
-  const handlePlanChange = async (updatedPlan) => {
+  const handlePlanChange = async (updatedPlanData) => {
     if (!selectedPlan || !selectedPlan.id) return;
     
     try {
       // Update the plan in database
       const planToUpdate = {
         id: selectedPlan.id,
-        planType: selectedPlan.planType,
-        startDate: updatedPlan.startdate,
-        endDate: updatedPlan.enddate,
+        planType: updatedPlanData.meta?.plan_type || selectedPlan.planType,
+        startDate: updatedPlanData.meta?.start_date || selectedPlan.startDate,
+        endDate: selectedPlan.endDate,
         weeklyHours: selectedPlan.weeklyHours || null,
-        weeks: {
-          week1: updatedPlan.week1,
-          week2: updatedPlan.week2,
-          week3: updatedPlan.week3,
-          week4: updatedPlan.week4
-        }
+        planData: updatedPlanData
       };
 
       const result = await saveTrainingPlan(planToUpdate);
@@ -523,11 +510,10 @@ const DataPage = () => {
                   {selectedPlan && 
                    selectedPlan.id === plan.id && (
                     <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                      <TrainingPlanCalendar
-                        planData={selectedPlan.calendarData}
-                        onPlanChange={handlePlanChange}
-                        planType={plan.planType}
-                      />
+                      {/* TrainingPlanCalendar uses old format - needs to be updated or replaced */}
+                      <p className="text-gray-600 dark:text-gray-300">
+                        Plan view coming soon. Use Training Plan page to view full plan details.
+                      </p>
                     </div>
                   )}
                 </div>

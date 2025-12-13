@@ -122,15 +122,14 @@ const formatTrainingPlan = (plan) => {
     planText += `\n  Weekly Hours: ${plan.weeklyHours}`;
   }
   
-  if (plan.weeks) {
+  if (plan.planData && plan.planData.schedule) {
     planText += `\n  Structure:\n`;
-    ['week1', 'week2', 'week3', 'week4'].forEach(weekKey => {
-      if (plan.weeks[weekKey]) {
-        const week = plan.weeks[weekKey];
-        planText += `    ${weekKey}:\n`;
-        ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach(day => {
-          if (week[day]) {
-            planText += `      ${day}: ${week[day]}\n`;
+    plan.planData.schedule.forEach((week, index) => {
+      planText += `    Week ${week.week_number} (${week.phase_name}): ${week.weekly_focus}\n`;
+      if (week.days && week.days.length > 0) {
+        week.days.forEach(day => {
+          if (!day.is_rest_day) {
+            planText += `      ${day.day_name}: ${day.activity_title} (${day.total_estimated_duration_min} min)\n`;
           }
         });
       }

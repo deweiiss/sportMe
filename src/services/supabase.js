@@ -650,22 +650,39 @@ export const getTrainingPlans = async () => {
       return { error: plansError.message };
     }
 
+    // Get current date for active status calculation
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     // Transform database format to frontend format
-    const transformedPlans = (plans || []).map(plan => ({
-      id: plan.id,
-      planType: plan.plan_type,
-      startDate: plan.start_date,
-      endDate: plan.end_date,
-      weeklyHours: plan.weekly_hours,
-      weeks: {
-        week1: plan.week1,
-        week2: plan.week2,
-        week3: plan.week3,
-        week4: plan.week4
-      },
-      createdAt: plan.created_at,
-      updatedAt: plan.updated_at
-    }));
+    const transformedPlans = (plans || []).map(plan => {
+      const startDate = plan.start_date ? new Date(plan.start_date) : null;
+      const endDate = plan.end_date ? new Date(plan.end_date) : null;
+      
+      // Calculate is_active: current date is between start_date and end_date (inclusive)
+      let isActive = false;
+      if (startDate && endDate) {
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        isActive = today >= startDate && today <= endDate;
+      }
+
+      const transformed = {
+        id: plan.id,
+        planType: plan.plan_type,
+        startDate: plan.start_date,
+        endDate: plan.end_date,
+        weeklyHours: plan.weekly_hours,
+        createdAt: plan.created_at,
+        updatedAt: plan.updated_at,
+        isActive: isActive
+      };
+
+      // Include plan_data
+      transformed.planData = plan.plan_data;
+
+      return transformed;
+    });
 
     return { data: transformedPlans };
   } catch (err) {
@@ -676,11 +693,11 @@ export const getTrainingPlans = async () => {
 /**
  * Save or update a training plan for the current authenticated user
  * @param {Object} planData - Training plan data
- * @param {string} planData.planType - Type of plan ('ftp', 'base', 'vo2max')
+ * @param {Object} planData.planData - Training plan in new format with meta, periodization_overview, and schedule
+ * @param {string} planData.planType - Type of plan (optional, extracted from planData if not provided)
  * @param {string} planData.startDate - Start date (YYYY-MM-DD)
  * @param {string} planData.endDate - End date (YYYY-MM-DD)
  * @param {string} planData.weeklyHours - Weekly hours (optional)
- * @param {Object} planData.weeks - Weeks object with week1-4
  * @param {string} planData.id - Plan ID for updates (optional, if not provided creates new)
  * @returns {Promise<{data?: Object, error?: string}>}
  */
@@ -704,19 +721,31 @@ export const saveTrainingPlan = async (planData) => {
       return { error: athleteError?.message || 'Athlete not found for this user' };
     }
 
+    // Validate that planData.planData exists (new format is required)
+    if (!planData.planData || !planData.planData.meta || !planData.planData.schedule) {
+      return { error: 'Invalid plan data format. planData.planData with meta and schedule is required.' };
+    }
+
+    const newPlanData = planData.planData;
+    
     // Prepare data for database
     const dbData = {
       athlete_id: athlete.id,
-      plan_type: planData.planType,
-      start_date: planData.startDate,
+      plan_data: newPlanData,
+      plan_type: newPlanData.meta?.plan_type || planData.planType || 'FITNESS',
+      start_date: planData.startDate || newPlanData.meta?.start_date || new Date().toISOString().split('T')[0],
       end_date: planData.endDate,
       weekly_hours: planData.weeklyHours || null,
-      week1: planData.weeks.week1,
-      week2: planData.weeks.week2,
-      week3: planData.weeks.week3,
-      week4: planData.weeks.week4,
       updated_at: new Date().toISOString()
     };
+    
+    // Calculate end_date from schedule if not provided
+    if (!dbData.end_date && newPlanData.schedule && newPlanData.schedule.length > 0) {
+      const start = new Date(dbData.start_date);
+      const weeks = newPlanData.schedule.length;
+      start.setDate(start.getDate() + (weeks * 7) - 1);
+      dbData.end_date = start.toISOString().split('T')[0];
+    }
 
     let result;
     if (planData.id) {
@@ -759,14 +788,9 @@ export const saveTrainingPlan = async (planData) => {
       startDate: result.start_date,
       endDate: result.end_date,
       weeklyHours: result.weekly_hours,
-      weeks: {
-        week1: result.week1,
-        week2: result.week2,
-        week3: result.week3,
-        week4: result.week4
-      },
       createdAt: result.created_at,
-      updatedAt: result.updated_at
+      updatedAt: result.updated_at,
+      planData: result.plan_data
     };
 
     return { data: transformedPlan };
@@ -1053,19 +1077,22 @@ export const migrateTrainingPlansFromLocalStorage = async () => {
 
     for (const plan of plans) {
       try {
+        // Skip plans that don't have the new format (planData)
+        if (!plan.planData || !plan.planData.meta || !plan.planData.schedule) {
+          console.log('Skipping plan without new format:', plan.planType);
+          continue;
+        }
+
         // Check if plan already exists (by checking createdAt and planType combination)
         // Since we don't have a unique constraint, we'll try to insert and handle duplicates
         const dbData = {
           athlete_id: athlete.id,
-          plan_type: plan.planType,
-          start_date: plan.startDate,
+          plan_type: plan.planData.meta?.plan_type || plan.planType,
+          start_date: plan.startDate || plan.planData.meta?.start_date,
           end_date: plan.endDate,
           weekly_hours: plan.weeklyHours || null,
-          week1: plan.weeks.week1,
-          week2: plan.weeks.week2,
-          week3: plan.weeks.week3,
-          week4: plan.weeks.week4,
-          created_at: plan.createdAt || new Date().toISOString(),
+          plan_data: plan.planData,
+          created_at: plan.createdAt || plan.planData.meta?.created_at || new Date().toISOString(),
           updated_at: plan.updatedAt || new Date().toISOString()
         };
 

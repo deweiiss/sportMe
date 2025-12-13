@@ -11,7 +11,8 @@ import {
 import { extractProfileData } from '../services/profileExtraction';
 import { getUserContext } from '../services/contextRetrieval';
 import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prompts';
-import { getTrainingPlans } from '../services/supabase';
+import { getTrainingPlans, saveTrainingPlan } from '../services/supabase';
+import { extractTrainingPlanJSON } from '../utils/jsonExtraction';
 
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
@@ -24,9 +25,12 @@ const ChatPanel = ({ width = 320 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
   const [userContext, setUserContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [activePlan, setActivePlan] = useState(null);
+  const [detectedPlan, setDetectedPlan] = useState(null); // Store detected training plan JSON
+  const [savingPlan, setSavingPlan] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => {
     // Load from localStorage, default to 'gemini'
     const saved = localStorage.getItem('chatModel');
@@ -110,6 +114,14 @@ const ChatPanel = ({ width = 320 }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [inputValue]);
+
   const loadChatHistory = async (chatId) => {
     if (!chatId) return;
     try {
@@ -142,6 +154,7 @@ const ChatPanel = ({ width = 320 }) => {
     setCurrentChatTitle(data.title || title);
     setMessages([]);
     setActiveSequenceStepId(null);
+    setDetectedPlan(null); // Clear detected plan when starting new chat
     await refreshSessions();
     return data.id;
   };
@@ -153,6 +166,7 @@ const ChatPanel = ({ width = 320 }) => {
     setActiveSequenceStepId(null);
     setShowSessions(false);
     setShowHistoryView(false);
+    setDetectedPlan(null); // Clear detected plan when switching chats
     await loadChatHistory(session.id);
   };
 
@@ -178,13 +192,65 @@ const ChatPanel = ({ width = 320 }) => {
     if (!newChatId) return;
     const firstStep = getDefaultTrainingPlanStep();
     setActiveSequenceStepId(firstStep.id);
-    const stepMessage = {
-      role: 'assistant',
-      content: firstStep.userPrompt,
-      createdAt: new Date().toISOString()
-    };
-    setMessages([stepMessage]);
-    await saveChatMessage('assistant', firstStep.userPrompt, newChatId);
+    
+    // Set loading state
+    setIsLoading(true);
+    
+    try {
+      // Call LLM API with the sequence step prompt (empty message history for new chat)
+      const emptyMessageHistory = [];
+      const currentModel = selectedModel?.toLowerCase()?.trim();
+      
+      let assistantResponse;
+      if (currentModel === 'gemini') {
+        assistantResponse = await sendGeminiMessage(emptyMessageHistory, '', null, null, firstStep);
+      } else {
+        assistantResponse = await sendOllamaMessage(emptyMessageHistory, '', null, null, firstStep);
+      }
+      
+      // Handle structured output response (object with text and planData)
+      let messageContent = assistantResponse;
+      let planDataFromResponse = null;
+      
+      if (assistantResponse && typeof assistantResponse === 'object' && assistantResponse.planData) {
+        // Structured output: extract planData and use only text for display
+        planDataFromResponse = assistantResponse.planData;
+        messageContent = assistantResponse.text || 'Training plan generated. Would you like to save it?';
+      } else if (typeof assistantResponse === 'string') {
+        // Regular response: try to extract plan JSON from text
+        const extractedPlan = extractTrainingPlanJSON(assistantResponse);
+        if (extractedPlan) {
+          planDataFromResponse = extractedPlan;
+        }
+      }
+      
+      // Display the LLM's response as the assistant message
+      const assistantMessage = {
+        role: 'assistant',
+        content: messageContent,
+        createdAt: new Date().toISOString()
+      };
+      setMessages([assistantMessage]);
+      await saveChatMessage('assistant', messageContent, newChatId);
+      
+      // Store detected plan if available
+      if (planDataFromResponse) {
+        setDetectedPlan(planDataFromResponse);
+      }
+    } catch (error) {
+      console.error('Error starting training plan flow:', error);
+      
+      const errorMessage = {
+        role: 'assistant',
+        content: `Error: ${error.message || 'Failed to start training plan flow. Please try again.'}`,
+        createdAt: new Date().toISOString(),
+        isError: true
+      };
+      setMessages([errorMessage]);
+      await saveChatMessage('assistant', errorMessage.content, newChatId);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const scrollToBottom = () => {
@@ -270,13 +336,16 @@ const ChatPanel = ({ width = 320 }) => {
     const chatId = currentChatId || await startNewChat('New conversation');
     if (!chatId) return;
 
-    const newUserMessage = {
-      role: 'user',
-      content: userMessage,
-      createdAt: new Date().toISOString()
-    };
-    setMessages(prev => [...prev, newUserMessage]);
-    setIsLoading(true);
+      const newUserMessage = {
+        role: 'user',
+        content: userMessage,
+        createdAt: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, newUserMessage]);
+      setIsLoading(true);
+      
+      // Clear detected plan when user sends a new message (will be re-detected if response contains plan)
+      setDetectedPlan(null);
 
     try {
       await saveChatMessage('user', userMessage, chatId, currentChatTitle);
@@ -338,25 +407,42 @@ const ChatPanel = ({ width = 320 }) => {
         throw new Error('Ollama is temporarily disabled while testing Gemini.');
       }
 
+      // Handle structured output response (object with text and planData)
+      let messageContent = assistantResponse;
+      let planDataFromResponse = null;
+      
+      if (assistantResponse && typeof assistantResponse === 'object' && assistantResponse.planData) {
+        // Structured output: extract planData and use only text for display
+        planDataFromResponse = assistantResponse.planData;
+        messageContent = assistantResponse.text || 'Training plan generated. Would you like to save it?';
+      } else if (typeof assistantResponse === 'string') {
+        // Regular response: try to extract plan JSON from text
+        const extractedPlan = extractTrainingPlanJSON(assistantResponse);
+        if (extractedPlan) {
+          planDataFromResponse = extractedPlan;
+        }
+      }
+
       const newAssistantMessage = {
         role: 'assistant',
-        content: assistantResponse,
+        content: messageContent,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [...prev, newAssistantMessage]);
-      await saveChatMessage('assistant', assistantResponse, chatId, currentChatTitle);
+      await saveChatMessage('assistant', messageContent, chatId, currentChatTitle);
 
+      // Store detected plan if available
+      if (planDataFromResponse) {
+        setDetectedPlan(planDataFromResponse);
+      } else {
+        setDetectedPlan(null);
+      }
+
+      // Update sequence step for next message (prompts are sent to LLM internally, not shown to user)
       if (sequenceStep?.nextId) {
         const nextStep = getTrainingPlanStep(sequenceStep.nextId);
         if (nextStep) {
           setActiveSequenceStepId(nextStep.id);
-          const promptMessage = {
-            role: 'assistant',
-            content: nextStep.userPrompt,
-            createdAt: new Date().toISOString()
-          };
-          setMessages(prev => [...prev, promptMessage]);
-          await saveChatMessage('assistant', nextStep.userPrompt, chatId, currentChatTitle);
         } else {
           setActiveSequenceStepId(null);
         }
@@ -398,6 +484,87 @@ const ChatPanel = ({ width = 320 }) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleSavePlan = async () => {
+    if (!detectedPlan || savingPlan) return;
+
+    setSavingPlan(true);
+    try {
+      // Calculate start_date and end_date from schedule
+      const schedule = detectedPlan.schedule || [];
+      if (schedule.length === 0) {
+        alert('Invalid plan: no schedule data');
+        return;
+      }
+
+      // Get start_date from meta or calculate from first week
+      let startDate = detectedPlan.meta?.start_date;
+      if (!startDate && schedule[0]?.days && schedule[0].days.length > 0) {
+        // Try to find the first non-rest day
+        const firstDay = schedule[0].days.find(d => !d.is_rest_day);
+        if (firstDay) {
+          // Use today's date as fallback, or calculate from day_index
+          startDate = new Date().toISOString().split('T')[0];
+        }
+      }
+      if (!startDate) {
+        startDate = new Date().toISOString().split('T')[0];
+      }
+
+      // Calculate end_date from last week
+      const lastWeek = schedule[schedule.length - 1];
+      let endDate = startDate;
+      if (lastWeek?.days && lastWeek.days.length > 0) {
+        // Add (schedule.length * 7) days to start_date
+        const start = new Date(startDate);
+        const daysToAdd = schedule.length * 7;
+        start.setDate(start.getDate() + daysToAdd - 1);
+        endDate = start.toISOString().split('T')[0];
+      }
+
+      const planToSave = {
+        planData: detectedPlan,
+        planType: detectedPlan.meta?.plan_type || 'FITNESS',
+        startDate: startDate,
+        endDate: endDate,
+        planName: detectedPlan.meta?.plan_name || 'Training Plan'
+      };
+
+      const result = await saveTrainingPlan(planToSave);
+      
+      if (result.error) {
+        alert(`Failed to save plan: ${result.error}`);
+        return;
+      }
+
+      // Show success message
+      const successMessage = {
+        role: 'assistant',
+        content: `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been saved! You can view it in the Training Plan page.`,
+        createdAt: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, successMessage]);
+      await saveChatMessage('assistant', successMessage.content, currentChatId, currentChatTitle);
+      
+      // Clear detected plan
+      setDetectedPlan(null);
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      alert(`Failed to save plan: ${error.message}`);
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const getPlanTypeLabel = (planType) => {
+    const labels = {
+      BEGINNER: 'Beginner',
+      FITNESS: 'Fitness',
+      WEIGHT_LOSS: 'Weight Loss',
+      COMPETITION: 'Competition'
+    };
+    return labels[planType] || planType;
   };
 
   return (
@@ -530,7 +697,7 @@ const ChatPanel = ({ width = 320 }) => {
       )}
 
       {/* Quick Action Buttons */}
-      {!showHistoryView && (
+      {!showHistoryView && messages.length === 0 && (
         <div className="px-4 pt-2 pb-2 border-t border-lavender-blush-200 dark:border-lavender-blush-800">
           <div className="flex flex-wrap gap-2">
             <button
@@ -547,6 +714,29 @@ const ChatPanel = ({ width = 320 }) => {
                 ✏️ Adjust Active Plan
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Save Plan Button - Above Input */}
+      {!showHistoryView && detectedPlan && (
+        <div className="px-4 pt-2 pb-2 border-t border-lavender-blush-200 dark:border-lavender-blush-800">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-lavender-blush-900 dark:text-lavender-blush-50 m-0 mb-1">
+                ✅ Training Plan Generated
+              </p>
+              <p className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 m-0">
+                {detectedPlan.meta?.plan_name || 'Training Plan'} • {getPlanTypeLabel(detectedPlan.meta?.plan_type)} • {detectedPlan.meta?.total_duration_weeks || 0} weeks
+              </p>
+            </div>
+            <button
+              onClick={handleSavePlan}
+              disabled={savingPlan}
+              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {savingPlan ? 'Saving...' : 'Save Plan'}
+            </button>
           </div>
         </div>
       )}
@@ -569,14 +759,15 @@ const ChatPanel = ({ width = 320 }) => {
             <option value="ollama">Ollama</option>
           </select>
           
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
             placeholder="Ask anything..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
-            className="flex-1 px-4 py-3 border-2 border-lavender-blush-200 dark:border-lavender-blush-600 rounded-lg text-base transition-colors focus:outline-none focus:border-yale-blue-500 dark:bg-lavender-blush-800 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            rows={1}
+            className="flex-1 px-4 py-3 border-2 border-lavender-blush-200 dark:border-lavender-blush-600 rounded-lg text-base transition-colors focus:outline-none focus:border-yale-blue-500 dark:bg-lavender-blush-800 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed resize-none min-h-[48px] max-h-[200px] overflow-y-auto"
           />
           <button
             onClick={handleSendMessage}

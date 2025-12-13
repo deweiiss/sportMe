@@ -314,11 +314,13 @@ You have successfully validated the athlete's profile.
 
 YOUR TASK:
 
-Generate a complete, detailed training plan based on the "Athlete Summary".
+Generate a complete, detailed training plan based on the FULL CONVERSATION HISTORY and ALL the athlete's detailed answers provided throughout the intake sequence.
+
+IMPORTANT: Use ALL specific details, numbers, preferences, and constraints mentioned by the athlete during the entire conversation. The "Athlete Summary" was for user validation, but you must use the complete detailed information from the entire conversation history to create the most accurate and personalized training plan.
 
 PLAN TYPE SELECTION:
 
-Based on the athlete's goal from the summary, select the appropriate plan type and apply its specific strategy:
+Based on the athlete's goal from the conversation, select the appropriate plan type and apply its specific strategy:
 
 1. If the goal is to start running, return to running, or build basic fitness → Use BEGINNER strategy
 2. If the goal is general health, fitness, or maintaining a routine → Use FITNESS strategy
@@ -347,62 +349,28 @@ GENERAL RULES FOR PLAN CREATION:
 
 1. Progression: Ensure logical volume/intensity progression (e.g., max 10% increase per week).
 
-2. Safety: Respect the injury history mentioned in the summary.
+2. Safety: Respect ALL injury history, health constraints, and physical limitations mentioned throughout the conversation.
 
 3. Clarity: Workout descriptions must be actionable (e.g., "Run 5 min @ Zone 2").
 
-4. Constraints: Strictly adhere to the user's available days/time.
+4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
 OUTPUT FORMAT:
 
-You must output ONLY valid JSON using the schema defined below. Do not add conversational text before or after the JSON.
+You must generate a complete, detailed training plan following the JSON schema that will be automatically enforced by the system. The response will be formatted as valid JSON matching the required structure.
 
-JSON SCHEMA:
+Focus on creating a detailed, personalized plan based on all the information gathered during our conversation. Ensure:
 
-{
-  "meta": {
-    "plan_id": "UUID_STRING",
-    "plan_name": "STRING",
-    "plan_type": "ENUM_STRING", 
-    "athlete_level": "ENUM_STRING",
-    "total_duration_weeks": "INTEGER",
-    "created_at": "2023-10-27",
-    "start_date": "YYYY-MM-DD"
-  },
-  "periodization_overview": {
-    "macrocycle_goal": "STRING",
-    "phases": ["STRING", "STRING", "STRING"] 
-  },
-  "schedule": [
-    {
-      "week_number": "INTEGER",
-      "phase_name": "STRING",
-      "weekly_focus": "STRING",
-      "days": [
-        {
-          "day_name": "ENUM_STRING",
-          "day_index": "INTEGER",
-          "is_rest_day": "BOOLEAN",
-          "is_completed": "BOOLEAN",
-          "activity_category": "ENUM_STRING",
-          "activity_title": "STRING",
-          "total_estimated_duration_min": "INTEGER",
-          "workout_structure": [
-            {
-              "segment_type": "ENUM_STRING",
-              "description": "STRING",
-              "duration_value": "NUMBER",
-              "duration_unit": "ENUM_STRING",
-              "intensity_zone": "INTEGER"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
+1. All workouts are actionable and specific (e.g., "Run 5 min @ Zone 2")
+2. Weekly progression is logical and safe (max 10% increase per week)
+3. All constraints mentioned by the athlete are respected
+4. The plan reflects the selected strategy (BEGINNER, FITNESS, WEIGHT_LOSS, or COMPETITION)
 
-` + JSON_SCHEMA_CONSTRAINTS,
+The system will automatically format your response as JSON and ask the user if they want to save or edit the plan.
+
+` + JSON_SCHEMA_CONSTRAINTS + `
+
+Remember: Create a comprehensive, personalized training plan that addresses the athlete's goals, current fitness level, available time, and any health constraints.`,
     nextId: null
   }
 ];

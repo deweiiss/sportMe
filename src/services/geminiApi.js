@@ -224,9 +224,24 @@ export const getTrainingPlanJsonSchema = () => {
               type: "array",
               items: { 
                 type: "string",
-                description: "Day information in pipe-delimited format: 'day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|workout_segments'. For rest days, workout_segments is empty. Example: 'Monday|1|false|false|RUN|Easy Run|30|MAIN:Run easy pace,30 min,Zone 2'. Multiple segments separated by ||: 'WARMUP:5 min easy,5 min,Zone 1||MAIN:Run 20 min,20 min,Zone 2||COOLDOWN:5 min walk,5 min,Zone 1'"
+                description: `Day information in pipe-delimited format: 'day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|workout_segments'.
+
+IMPORTANT FOR WORKOUT SEGMENTS:
+- For REST days: workout_segments is empty (just end after duration)
+- For ALL other days: ALWAYS include MULTIPLE segments separated by ||
+- Each segment format: SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone
+- Segment types: WARMUP, MAIN, INTERVAL, RECOVERY, COOLDOWN
+
+EXAMPLES:
+- Rest day: 'Sunday|7|true|false|REST|Rest Day|0|'
+- Easy run (3 segments): 'Monday|1|false|false|RUN|Easy Run|40|WARMUP:Easy jog,5 min,Zone 1||MAIN:Run at conversational pace,30 min,Zone 2||COOLDOWN:Walk,5 min,Zone 1'
+- Tempo run (3 segments): 'Wednesday|3|false|false|RUN|Tempo Workout|50|WARMUP:Easy jog,10 min,Zone 2||MAIN:Tempo pace run,30 min,Zone 4||COOLDOWN:Easy jog,10 min,Zone 2'
+- Intervals (5 segments): 'Friday|5|false|false|RUN|Interval Training|45|WARMUP:Easy jog,10 min,Zone 2||INTERVAL:400m fast,2 min,Zone 5||RECOVERY:Jog recovery,2 min,Zone 1||MAIN:Repeat 6x,20 min,Zone 4||COOLDOWN:Easy jog,5 min,Zone 2'
+- Long run (3 segments): 'Saturday|6|false|false|RUN|Long Run|90|WARMUP:Easy start,10 min,Zone 1||MAIN:Steady run,70 min,Zone 2||COOLDOWN:Walk cooldown,10 min,Zone 1'
+
+ALWAYS include at least WARMUP, MAIN, and COOLDOWN segments for running workouts!`
               },
-              description: "Array of days in the week. Each day is a pipe-delimited string containing: day name (Monday-Sunday), day index (1-7), is_rest_day (true/false), is_completed (true/false), activity category (RUN/WALK/STRENGTH/CROSS_TRAIN/REST/MOBILITY), activity title, duration in minutes, and workout segments (separated by ||, each segment: SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone)"
+              description: "Array of 7 days in the week. Each day is a pipe-delimited string. CRITICAL: For running workouts, ALWAYS include multiple segments (WARMUP||MAIN||COOLDOWN at minimum). Use || to separate segments."
             }
           },
           required: ["week_number", "phase_name", "weekly_focus", "days"]

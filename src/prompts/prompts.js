@@ -215,6 +215,11 @@ export const JSON_SCHEMA_CONSTRAINTS = `
    - "RECOVERY" (Die Trabpause zwischen Intervallen)
    - "COOLDOWN" (Auslaufen)
 
+   **WICHTIG: Jedes Lauf-Workout MUSS mehrere Segmente haben!**
+   - Minimum: WARMUP || MAIN || COOLDOWN
+   - Intervalle: WARMUP || INTERVAL || RECOVERY || INTERVAL || ... || COOLDOWN
+   - Segmente werden mit || getrennt im String-Format
+
 6. **duration_unit**
    - "min" (Zeitbasiert - Standard für Einsteiger & Fettverbrennung)
    - "km" (Distanzbasiert - Standard für Wettkampf Long Runs)

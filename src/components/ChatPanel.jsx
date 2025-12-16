@@ -570,20 +570,33 @@ const ChatPanel = ({ width = 320 }) => {
   const handleDeleteChat = async (e, sessionId) => {
     e.stopPropagation(); // Prevent selecting the chat when clicking delete
     
-    if (!confirm('Delete this chat? This cannot be undone.')) return;
+    console.log('🗑️ Delete requested for session:', sessionId);
     
-    const { error } = await deleteChatSession(sessionId);
-    if (error) {
-      console.error('Error deleting chat:', error);
-      alert('Failed to delete chat');
+    if (!confirm('Delete this chat? This cannot be undone.')) {
+      console.log('❌ Delete cancelled by user');
       return;
     }
+    
+    console.log('🔄 Calling deleteChatSession...');
+    const { data, error } = await deleteChatSession(sessionId);
+    console.log('📤 Delete result:', { data, error });
+    
+    if (error) {
+      console.error('❌ Error deleting chat:', error);
+      alert(`Failed to delete chat: ${error}`);
+      return;
+    }
+    
+    console.log('✅ Chat deleted, refreshing sessions...');
     
     // Refresh sessions list
     await refreshSessions();
     
+    console.log('📋 Sessions refreshed. Current sessions:', chatSessions.length);
+    
     // If we deleted the current chat, start a new one
     if (sessionId === currentChatId) {
+      console.log('🔄 Deleted current chat, resetting state...');
       setCurrentChatId(null);
       setCurrentChatTitle('New conversation');
       setMessages([]);

@@ -1185,32 +1185,63 @@ export const listChatSessions = async (limit = 50) => {
  * @param {string} chatId
  */
 export const deleteChatSession = async (chatId) => {
-  if (!chatId) return { error: 'chatId is required' };
+  console.log('🗑️ deleteChatSession called with chatId:', chatId);
+  
+  if (!chatId) {
+    console.error('❌ chatId is required');
+    return { error: 'chatId is required' };
+  }
+  
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return { error: 'User not authenticated' };
+    console.log('👤 User check:', { userId: user?.id, error: userError });
+    
+    if (userError || !user) {
+      console.error('❌ User not authenticated');
+      return { error: 'User not authenticated' };
+    }
 
-    // First delete all messages in the chat
-    const { error: messagesError } = await supabase
+    // First delete all messages in the chat (also verify user owns them)
+    console.log('🔄 Deleting messages for chat:', chatId);
+    const { data: deletedMessages, error: messagesError } = await supabase
       .from('chat_messages')
       .delete()
-      .eq('chat_session_id', chatId);
+      .eq('chat_id', chatId)
+      .eq('user_id', user.id)
+      .select();
+
+    console.log('📨 Messages delete result:', { deletedMessages, messagesError });
 
     if (messagesError) {
-      console.error('Error deleting chat messages:', messagesError);
+      console.error('⚠️ Error deleting chat messages:', messagesError);
       // Continue anyway to try deleting the session
     }
 
     // Then delete the chat session
-    const { error } = await supabase
+    console.log('🔄 Deleting chat session:', chatId);
+    const { data, error } = await supabase
       .from('chat_sessions')
       .delete()
       .eq('id', chatId)
-      .eq('user_id', user.id); // Ensure user owns this chat
+      .eq('user_id', user.id)
+      .select();
 
-    if (error) return { error: error.message };
+    console.log('📤 Session delete result:', { data, error });
+
+    if (error) {
+      console.error('❌ Error deleting chat session:', error);
+      return { error: error.message };
+    }
+    
+    if (!data || data.length === 0) {
+      console.warn('⚠️ No session was deleted - may not exist or not owned by user');
+      return { error: 'Chat not found or already deleted' };
+    }
+    
+    console.log('✅ Chat session deleted successfully:', data);
     return { data: true };
   } catch (err) {
+    console.error('❌ Exception in deleteChatSession:', err);
     return { error: err.message };
   }
 };

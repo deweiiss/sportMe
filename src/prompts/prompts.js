@@ -251,11 +251,13 @@ START your response by stating what you can see from their Strava data (e.g., "I
 
 Then ask ONLY about things NOT in their Strava data:
 
-1. Goal & timeline (what event/goal are you training for? when?)
+1. Goal & timeline (what event/goal are you training for? when is the target date?)
 
-2. Injury history & health constraints (any past injuries or medical limitations?)
+2. Plan start date (when should this training plan start? If not specified, default to tomorrow)
 
-3. Schedule preferences (which days work best? any time constraints?)
+3. Injury history & health constraints (any past injuries or medical limitations?)
+
+4. Schedule preferences (which days work best? any time constraints?)
 
 Rules:
 
@@ -263,7 +265,9 @@ Rules:
 
 - Use bullet points
 
-- Be conversational, not clinical`,
+- Be conversational, not clinical
+
+- If user doesn't specify a start date, assume the plan starts tomorrow`,
     nextId: 'validation-gap-check'
   },
   {
@@ -311,6 +315,7 @@ USE STRAVA DATA FOR (do NOT say "unknown"):
 
 USE USER'S ANSWERS FOR:
 - Goal and target date
+- Plan start date (if not specified, default to tomorrow)
 - Injury history and health constraints
 - Schedule preferences
 - Easy/conversational pace (if they provided it)
@@ -318,6 +323,7 @@ USE USER'S ANSWERS FOR:
 
 FORMAT:
 **Goal:** [from conversation]
+**Plan start date:** [from conversation, or "Tomorrow" if not specified]
 **Current fitness (from Strava):** X km/week, X runs/week, longest run X km, avg pace X min/km
 **Constraints/Injuries:** [from conversation, or "None mentioned"]
 **Schedule:** [from conversation]
@@ -380,11 +386,12 @@ GENERAL RULES FOR PLAN CREATION:
 4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
 IMPORTANT DATE CALCULATION:
-- The current date will be provided in the conversation context
-- Calculate start_date based on when the athlete wants to START training (usually within the next 1-2 weeks from current date)
+- The current date will be provided in the conversation context as "Today's date: YYYY-MM-DD"
+- Use the athlete's specified start date if they provided one during intake
+- If NO start date was specified, DEFAULT to tomorrow (current date + 1 day)
 - Calculate the plan duration to END at the athlete's goal date (e.g., race day)
 - The start_date in the JSON must be in YYYY-MM-DD format
-- If the athlete says "X months from now", calculate the actual future date
+- If the athlete says "X months from now" or "next Monday", calculate the actual date
 
 OUTPUT FORMAT:
 

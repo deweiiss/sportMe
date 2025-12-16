@@ -6,15 +6,16 @@ import { parseFlattenedTrainingPlan } from '../utils/parseTrainingPlan';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 console.log('API Key loaded:', GEMINI_API_KEY ? 'Yes' : 'No');
 
-// Gemini model fallback chain - if primary is overloaded, try alternatives
+// Gemini model fallback chain - try alternatives if primary is overloaded
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',    // Primary - newest, fastest
-  'gemini-1.5-flash',    // Fallback 1 - stable, fast
-  'gemini-1.5-pro',      // Fallback 2 - more capable
+  'gemini-2.5-pro',        // Primary - most capable
+  'gemini-2.5-flash',      // Fallback 1 - fast
+  'gemini-2.5-flash-lite', // Fallback 2 - lightest, highest availability
 ];
 const GEMINI_MODEL = GEMINI_MODELS[0];
 const MAX_RETRIES_PER_MODEL = 2;
-const INITIAL_RETRY_DELAY_MS = 1000; // Start with 1 second
+const INITIAL_RETRY_DELAY_MS = 2000; // Start with 2 seconds
+const MAX_RETRY_DELAY_MS = 15000;    // Max 15 seconds between retries
 
 /**
  * Sleep utility for retry delays
@@ -22,7 +23,7 @@ const INITIAL_RETRY_DELAY_MS = 1000; // Start with 1 second
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Check if error is a retryable 503 error
+ * Check if error is a retryable 503/overloaded error
  */
 const isRetryableError = (error) => {
   const status = error?.status || error?.code;
@@ -37,6 +38,24 @@ const isRetryableError = (error) => {
     message.includes('try again later')
   );
 };
+
+/**
+ * Check if we should try the next model (overloaded, not found, etc.)
+ */
+const shouldTryNextModel = (error) => {
+  const status = error?.status || error?.code;
+  const message = error?.message || '';
+  
+  return (
+    isRetryableError(error) ||
+    status === 404 ||
+    status === 'NOT_FOUND' ||
+    message.includes('not found') ||
+    message.includes('NOT_FOUND') ||
+    message.includes('not supported')
+  );
+};
+
 
 /**
  * System prompt for running coach persona
@@ -242,13 +261,12 @@ You have direct access to this data. Use it to personalize your coaching.` }]
     const useStructuredOutput = sequenceStep?.id === 'generate-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
 
-    // Model fallback chain - try each model if previous is overloaded
+    // Model fallback chain with retries per model
     let lastError;
     
     for (let modelIndex = 0; modelIndex < GEMINI_MODELS.length; modelIndex++) {
       const currentModel = GEMINI_MODELS[modelIndex];
       
-      // Retry logic with exponential backoff for each model
       for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
         try {
           if (modelIndex > 0 || attempt > 1) {
@@ -282,9 +300,11 @@ You have direct access to this data. Use it to personalize your coaching.` }]
             responseText = response;
           }
 
-          // Log success with fallback model
+          // Log success
           if (modelIndex > 0) {
             console.log(`✅ Success with fallback model: ${currentModel}`);
+          } else if (attempt > 1) {
+            console.log(`✅ Success on retry ${attempt}`);
           }
 
           // If using structured output, parse JSON and return separately from display text
@@ -306,27 +326,31 @@ You have direct access to this data. Use it to personalize your coaching.` }]
           return responseText;
         } catch (error) {
           lastError = error;
+          const errorMsg = error.message || String(error);
+          console.log(`⚠️ ${currentModel} error:`, errorMsg.substring(0, 100));
           
-          // Check if this is a retryable error
-          if (isRetryableError(error)) {
-            // If we have more retries for this model, wait and retry
-            if (attempt < MAX_RETRIES_PER_MODEL) {
-              const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-              console.log(`⚠️ ${currentModel} overloaded. Retrying in ${delay}ms...`);
+          // Check if we should try again or move to next model
+          if (shouldTryNextModel(error)) {
+            // For retryable errors, retry same model with backoff
+            if (isRetryableError(error) && attempt < MAX_RETRIES_PER_MODEL) {
+              const baseDelay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+              const jitter = Math.random() * 1000;
+              const delay = Math.min(baseDelay + jitter, MAX_RETRY_DELAY_MS);
+              console.log(`⏳ Waiting ${Math.round(delay/1000)}s before retry...`);
               await sleep(delay);
               continue;
             }
             
-            // If we have more models to try, move to next model
+            // Move to next model if available
             if (modelIndex < GEMINI_MODELS.length - 1) {
-              console.log(`⚠️ ${currentModel} exhausted retries. Trying next model...`);
-              break; // Break inner loop, continue to next model
+              console.log(`➡️ Switching to ${GEMINI_MODELS[modelIndex + 1]}...`);
+              break; // Break inner loop to try next model
             }
           }
           
-          // If not retryable or out of all options, throw
-          if (!isRetryableError(error) || modelIndex === GEMINI_MODELS.length - 1) {
-            throw error;
+          // Last model exhausted, throw error
+          if (modelIndex === GEMINI_MODELS.length - 1) {
+            throw new Error(`All Gemini models failed. Last error: ${errorMsg}`);
           }
         }
       }

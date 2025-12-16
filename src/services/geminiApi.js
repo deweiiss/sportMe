@@ -5,8 +5,15 @@ import { parseFlattenedTrainingPlan } from '../utils/parseTrainingPlan';
 // Get API key from environment variable
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 console.log('API Key loaded:', GEMINI_API_KEY ? 'Yes' : 'No');
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const MAX_RETRIES = 3;
+
+// Gemini model fallback chain - if primary is overloaded, try alternatives
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',    // Primary - newest, fastest
+  'gemini-1.5-flash',    // Fallback 1 - stable, fast
+  'gemini-1.5-pro',      // Fallback 2 - more capable
+];
+const GEMINI_MODEL = GEMINI_MODELS[0];
+const MAX_RETRIES_PER_MODEL = 2;
 const INITIAL_RETRY_DELAY_MS = 1000; // Start with 1 second
 
 /**
@@ -235,71 +242,93 @@ You have direct access to this data. Use it to personalize your coaching.` }]
     const useStructuredOutput = sequenceStep?.id === 'generate-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
 
-    // Retry logic with exponential backoff for 503 errors
+    // Model fallback chain - try each model if previous is overloaded
     let lastError;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        // Prepare config for structured output if needed
-        const config = {};
-        if (useStructuredOutput && jsonSchema) {
-          config.responseMimeType = "application/json";
-          config.responseJsonSchema = jsonSchema;
-        }
+    
+    for (let modelIndex = 0; modelIndex < GEMINI_MODELS.length; modelIndex++) {
+      const currentModel = GEMINI_MODELS[modelIndex];
+      
+      // Retry logic with exponential backoff for each model
+      for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+        try {
+          if (modelIndex > 0 || attempt > 1) {
+            console.log(`🔄 Trying ${currentModel} (model ${modelIndex + 1}/${GEMINI_MODELS.length}, attempt ${attempt}/${MAX_RETRIES_PER_MODEL})...`);
+          }
+          
+          // Prepare config for structured output if needed
+          const config = {};
+          if (useStructuredOutput && jsonSchema) {
+            config.responseMimeType = "application/json";
+            config.responseJsonSchema = jsonSchema;
+          }
 
-        // Call Gemini API with system instruction
-        const response = await client.models.generateContent({
-          model: modelToUse,
-          contents: contents,
-          systemInstruction: !hasSystemPrompt ? {
-            parts: [{ text: systemPromptToUse }]
-          } : undefined,
-          config: Object.keys(config).length > 0 ? config : undefined,
-        });
+          // Call Gemini API with system instruction
+          const response = await client.models.generateContent({
+            model: currentModel,
+            contents: contents,
+            systemInstruction: !hasSystemPrompt ? {
+              parts: [{ text: systemPromptToUse }]
+            } : undefined,
+            config: Object.keys(config).length > 0 ? config : undefined,
+          });
 
-        // Extract text from response
-        // The response structure might be: response.text or response.response.text()
-        let responseText = '';
-        if (response.text) {
-          responseText = response.text;
-        } else if (response.response && response.response.text) {
-          responseText = response.response.text();
-        } else if (typeof response === 'string') {
-          responseText = response;
-        }
+          // Extract text from response
+          let responseText = '';
+          if (response.text) {
+            responseText = response.text;
+          } else if (response.response && response.response.text) {
+            responseText = response.response.text();
+          } else if (typeof response === 'string') {
+            responseText = response;
+          }
 
-        // If using structured output, parse JSON and return separately from display text
-        if (useStructuredOutput && responseText) {
-          try {
-            const planData = JSON.parse(responseText);
-            // Parse flattened format to structured format
-            const structuredPlan = parseFlattenedTrainingPlan(planData);
-            // Return object with text (follow-up question only) and planData (for saving)
-            return {
-              text: 'Would you like to save this training plan, or would you like me to make any adjustments to it?',
-              planData: structuredPlan
-            };
-          } catch (parseError) {
-            console.error('Error parsing structured output JSON:', parseError);
-            console.error('Raw response:', responseText);
-            // Fallback: return raw response (shouldn't happen with structured output, but handle gracefully)
-            return responseText;
+          // Log success with fallback model
+          if (modelIndex > 0) {
+            console.log(`✅ Success with fallback model: ${currentModel}`);
+          }
+
+          // If using structured output, parse JSON and return separately from display text
+          if (useStructuredOutput && responseText) {
+            try {
+              const planData = JSON.parse(responseText);
+              const structuredPlan = parseFlattenedTrainingPlan(planData);
+              return {
+                text: 'Would you like to save this training plan, or would you like me to make any adjustments to it?',
+                planData: structuredPlan
+              };
+            } catch (parseError) {
+              console.error('Error parsing structured output JSON:', parseError);
+              console.error('Raw response:', responseText);
+              return responseText;
+            }
+          }
+          
+          return responseText;
+        } catch (error) {
+          lastError = error;
+          
+          // Check if this is a retryable error
+          if (isRetryableError(error)) {
+            // If we have more retries for this model, wait and retry
+            if (attempt < MAX_RETRIES_PER_MODEL) {
+              const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+              console.log(`⚠️ ${currentModel} overloaded. Retrying in ${delay}ms...`);
+              await sleep(delay);
+              continue;
+            }
+            
+            // If we have more models to try, move to next model
+            if (modelIndex < GEMINI_MODELS.length - 1) {
+              console.log(`⚠️ ${currentModel} exhausted retries. Trying next model...`);
+              break; // Break inner loop, continue to next model
+            }
+          }
+          
+          // If not retryable or out of all options, throw
+          if (!isRetryableError(error) || modelIndex === GEMINI_MODELS.length - 1) {
+            throw error;
           }
         }
-        
-        return responseText;
-      } catch (error) {
-        lastError = error;
-        
-        // Check if this is a retryable 503 error and we have retries left
-        if (isRetryableError(error) && attempt < MAX_RETRIES) {
-          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1); // Exponential backoff
-          console.log(`⚠️ Gemini API overloaded (503). Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
-          await sleep(delay);
-          continue; // Retry
-        }
-        
-        // If not retryable or out of retries, throw the error
-        throw error;
       }
     }
     

@@ -443,47 +443,13 @@ const ChatPanel = ({ width = 320 }) => {
       const sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
       
       let assistantResponse;
-      if (currentModel === 'gemini') {
-        console.log('✅ Calling Gemini API');
-        try {
-          assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context, sequenceStep);
-          console.log('✅ Gemini response received, length:', assistantResponse?.length);
-        } catch (geminiError) {
-          console.error('❌ Gemini API error:', geminiError);
-          // Disable Ollama fallback while testing Gemini path
-          // If you want fallback back on, restore the block below:
-          /*
-          if (geminiError.isUnavailable || geminiError.message?.includes('overloaded') || geminiError.message?.includes('unavailable')) {
-            console.log('🔄 Gemini unavailable, falling back to Ollama...');
-            try {
-              assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context, sequenceStep);
-              console.log('✅ Ollama fallback response received, length:', assistantResponse?.length);
-              
-              assistantResponse = `*[Note: Gemini API was temporarily unavailable, using Ollama instead]*\n\n${assistantResponse}`;
-            } catch (ollamaError) {
-              console.error('❌ Ollama fallback also failed:', ollamaError);
-              throw geminiError;
-            }
-          } else {
-            throw geminiError;
-          }
-          */
-          throw geminiError;
-        }
-      } else {
-        // Temporarily disable Ollama to ensure Gemini is the only path
-        // If you want to re-enable Ollama direct calls, restore the block below:
-        /*
-        console.log('✅ Calling Ollama API (selectedModel is not "gemini")');
-        try {
-          assistantResponse = await sendOllamaMessage(messageHistory, userMessage, null, context, sequenceStep);
-          console.log('✅ Ollama response received, length:', assistantResponse?.length);
-        } catch (ollamaError) {
-          console.error('❌ Ollama API error:', ollamaError);
-          throw ollamaError;
-        }
-        */
-        throw new Error('Ollama is temporarily disabled while testing Gemini.');
+      console.log('✅ Calling Gemini API (with model fallback chain)');
+      try {
+        assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context, sequenceStep);
+        console.log('✅ Gemini response received, length:', assistantResponse?.length);
+      } catch (geminiError) {
+        console.error('❌ Gemini API error:', geminiError);
+        throw geminiError;
       }
 
       // Handle structured output response (object with text and planData)

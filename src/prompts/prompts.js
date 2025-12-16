@@ -233,7 +233,10 @@ export const trainingPlanSequence = [
     systemPrompt: BASE_COACH_PROMPT,
     userPrompt: `Start athlete intake.
 
-Ask the user ONLY the critical questions required to design a safe and effective running training plan.
+First, ANALYZE the provided User Context (Strava history, profile).
+If the context contains answers to the critical questions below, DO NOT ask them again. Instead, summarize what you know and ask for confirmation.
+
+Ask the user ONLY for missing critical information required to design a safe and effective running training plan.
 
 Group questions into:
 

@@ -197,15 +197,18 @@ const ChatPanel = ({ width = 320 }) => {
     setIsLoading(true);
     
     try {
+      // Fetch context for the intake start
+      const context = await fetchUserContext();
+
       // Call LLM API with the sequence step prompt (empty message history for new chat)
       const emptyMessageHistory = [];
       const currentModel = selectedModel?.toLowerCase()?.trim();
       
       let assistantResponse;
       if (currentModel === 'gemini') {
-        assistantResponse = await sendGeminiMessage(emptyMessageHistory, '', null, null, firstStep);
+        assistantResponse = await sendGeminiMessage(emptyMessageHistory, '', null, context, firstStep);
       } else {
-        assistantResponse = await sendOllamaMessage(emptyMessageHistory, '', null, null, firstStep);
+        assistantResponse = await sendOllamaMessage(emptyMessageHistory, '', null, context, firstStep);
       }
       
       // Handle structured output response (object with text and planData)

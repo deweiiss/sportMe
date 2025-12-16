@@ -250,7 +250,9 @@ Group questions into:
 
 Rules:
 
-- Ask no more than 12 questions total
+- Ask ONLY 1-2 questions at a time. Wait for the user's answer before proceeding.
+
+- Cover all critical topics iteratively.
 
 - Use bullet points
 

@@ -142,8 +142,20 @@ const TrainingPlanPage = () => {
     }
   };
 
+  // Start a new training plan chat (creates new plan)
   const startTrainingPlanChat = () => {
     window.dispatchEvent(new Event('startTrainingPlanSequence'));
+  };
+  
+  // Start chat about an existing plan (to discuss/modify it)
+  const startPlanDiscussion = (plan) => {
+    const event = new CustomEvent('startPlanDiscussion', { 
+      detail: { 
+        plan: plan,
+        planData: plan.planData || plan
+      } 
+    });
+    window.dispatchEvent(event);
   };
 
     return (
@@ -180,15 +192,21 @@ const TrainingPlanPage = () => {
                       {formatPlanDate(plan.startDate)} - {formatPlanDate(plan.endDate)}
                     </span>
                   </div>
-                  <div className="flex gap-4 mb-4">
+                  <div className="flex gap-4 mb-4 flex-wrap">
                     <button 
-                      onClick={() => handleViewPlan(plan)}
+                      onClick={() => selectedPlan?.id === plan.id ? handleClosePlan() : handleViewPlan(plan)}
                       className="bg-primary-start hover:bg-primary-end text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
                     >
                       {selectedPlan && 
                        selectedPlan.id === plan.id 
                         ? 'Hide Plan' 
                         : 'View/Edit Plan'}
+                    </button>
+                    <button 
+                      onClick={() => startPlanDiscussion(plan)}
+                      className="bg-yale-blue-500 hover:bg-yale-blue-600 text-white border-none py-2 px-4 rounded-md cursor-pointer font-semibold text-sm transition-all hover:-translate-y-0.5"
+                    >
+                      💬 Discuss / Adjust
                     </button>
                     <button 
                       onClick={() => handleDeletePlan(plan)}

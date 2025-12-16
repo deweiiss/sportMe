@@ -131,13 +131,25 @@ const ChatPanel = ({ width = 320 }) => {
     initializeChats();
   }, []);
 
-  // Listen for training plan sequence trigger
+  // Listen for training plan sequence trigger (new plan)
   useEffect(() => {
     const handler = async () => {
       await startTrainingPlanFlow();
     };
     window.addEventListener('startTrainingPlanSequence', handler);
     return () => window.removeEventListener('startTrainingPlanSequence', handler);
+  }, []);
+  
+  // Listen for plan discussion trigger (discuss existing plan)
+  useEffect(() => {
+    const handler = async (event) => {
+      const { plan, planData } = event.detail || {};
+      if (planData) {
+        await startPlanDiscussionFlow(planData);
+      }
+    };
+    window.addEventListener('startPlanDiscussion', handler);
+    return () => window.removeEventListener('startPlanDiscussion', handler);
   }, []);
 
   // Load active plan on mount
@@ -314,6 +326,76 @@ const ChatPanel = ({ width = 320 }) => {
       };
       setMessages([errorMessage]);
       await saveChatMessage('assistant', errorMessage.content, newChatId);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Start a chat to discuss/modify an existing training plan
+  const startPlanDiscussionFlow = async (existingPlanData) => {
+    const planName = existingPlanData?.meta?.plan_name || 'Training Plan';
+    const newChatId = await startNewChat(`Discuss: ${planName}`);
+    if (!newChatId) return;
+    
+    // Don't use the sequence steps - this is a free-form discussion
+    setActiveSequenceStepId(null);
+    setIsLoading(true);
+    
+    try {
+      // Build plan context string
+      const planContext = `
+=== EXISTING TRAINING PLAN TO DISCUSS ===
+Plan Name: ${existingPlanData.meta?.plan_name || 'Training Plan'}
+Plan Type: ${existingPlanData.meta?.plan_type || 'Unknown'}
+Duration: ${existingPlanData.meta?.total_duration_weeks || '?'} weeks
+Start Date: ${existingPlanData.meta?.start_date || 'Not set'}
+Goal: ${existingPlanData.meta?.plan_goal || 'Not specified'}
+
+Phases: ${existingPlanData.periodization_overview?.phases?.map(p => p.phase_name).join(', ') || 'N/A'}
+
+The user wants to discuss, review, or modify this plan. You have full access to the plan data.
+Be ready to explain workouts, adjust the schedule, change intensity, or make any modifications they request.
+`;
+      
+      // Combine with user's Strava context
+      const userContext = await fetchUserContext();
+      const fullContext = planContext + '\n\n' + (userContext || '');
+      
+      // Send initial message to LLM
+      const emptyMessageHistory = [];
+      const initialPrompt = `The user wants to discuss their existing training plan "${planName}". 
+      
+Greet them briefly and let them know you can:
+- Explain any workout or phase in detail
+- Adjust the schedule (move workouts, change days)
+- Modify intensity or volume
+- Answer questions about the plan
+
+Keep your greeting short and ask what they'd like to discuss or change.`;
+
+      let assistantResponse;
+      assistantResponse = await sendGeminiMessage(emptyMessageHistory, initialPrompt, null, fullContext, null);
+      
+      const assistantMessage = {
+        role: 'assistant',
+        content: typeof assistantResponse === 'string' ? assistantResponse : assistantResponse.text || 'I have your training plan loaded. What would you like to discuss or adjust?',
+        createdAt: new Date().toISOString()
+      };
+      setMessages([assistantMessage]);
+      await saveChatMessage('assistant', assistantMessage.content, newChatId);
+      
+      // Store the plan so it can be modified
+      setDetectedPlan(existingPlanData);
+      
+    } catch (error) {
+      console.error('Error starting plan discussion:', error);
+      const errorMessage = {
+        role: 'assistant',
+        content: `Error: ${error.message || 'Failed to start plan discussion. Please try again.'}`,
+        createdAt: new Date().toISOString(),
+        isError: true
+      };
+      setMessages([errorMessage]);
     } finally {
       setIsLoading(false);
     }

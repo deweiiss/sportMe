@@ -161,6 +161,14 @@ export const getUserContext = async () => {
   try {
     const contextParts = [];
     
+    // Add current date for date calculations
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
+    contextParts.push('=== CURRENT DATE ===');
+    contextParts.push(`Today is: ${dayName}, ${dateStr}`);
+    contextParts.push('');
+    
     // Fetch athlete profile
     const profileResult = await getAthleteProfile();
     if (profileResult.data) {

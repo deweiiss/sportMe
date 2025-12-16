@@ -379,6 +379,13 @@ GENERAL RULES FOR PLAN CREATION:
 
 4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
+IMPORTANT DATE CALCULATION:
+- The current date will be provided in the conversation context
+- Calculate start_date based on when the athlete wants to START training (usually within the next 1-2 weeks from current date)
+- Calculate the plan duration to END at the athlete's goal date (e.g., race day)
+- The start_date in the JSON must be in YYYY-MM-DD format
+- If the athlete says "X months from now", calculate the actual future date
+
 OUTPUT FORMAT:
 
 CRITICAL: Output ONLY valid JSON. Do NOT include any text, explanations, or commentary.
@@ -386,7 +393,7 @@ The system uses structured output - your entire response must be parseable JSON 
 Do NOT write things like "Here's your plan" or explanations - ONLY the JSON object.
 
 The JSON structure includes:
-- meta: plan_name, plan_type, athlete_level, total_duration_weeks, start_date
+- meta: plan_name, plan_type, athlete_level, total_duration_weeks, start_date (YYYY-MM-DD format)
 - periodization_overview: phases array
 - schedule: array of weeks with days
 

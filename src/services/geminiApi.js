@@ -260,6 +260,9 @@ You have direct access to this data. Use it to personalize your coaching.` }]
     // Determine if we should use structured output (for generate-plan step)
     const useStructuredOutput = sequenceStep?.id === 'generate-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
+    
+    console.log('📋 Sequence step:', sequenceStep?.id || 'none');
+    console.log('📋 Using structured output:', useStructuredOutput);
 
     // Model fallback chain with retries per model
     let lastError;
@@ -309,8 +312,11 @@ You have direct access to this data. Use it to personalize your coaching.` }]
 
           // If using structured output, parse JSON and return separately from display text
           if (useStructuredOutput && responseText) {
+            console.log('📋 Parsing structured output, response length:', responseText.length);
+            console.log('📋 First 200 chars:', responseText.substring(0, 200));
             try {
               const planData = JSON.parse(responseText);
+              console.log('✅ JSON parsed successfully, plan name:', planData.meta?.plan_name);
               const structuredPlan = parseFlattenedTrainingPlan(planData);
               return {
                 text: 'Would you like to save this training plan, or would you like me to make any adjustments to it?',

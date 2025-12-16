@@ -442,6 +442,9 @@ const ChatPanel = ({ width = 320 }) => {
       const currentModel = selectedModel?.toLowerCase()?.trim();
       const sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
       
+      console.log('📋 Active sequence step:', activeSequenceStepId);
+      console.log('📋 Sequence step object:', sequenceStep?.id, '→', sequenceStep?.nextId);
+      
       let assistantResponse;
       console.log('✅ Calling Gemini API (with model fallback chain)');
       try {

@@ -381,20 +381,23 @@ GENERAL RULES FOR PLAN CREATION:
 
 OUTPUT FORMAT:
 
-You must generate a complete, detailed training plan following the JSON schema that will be automatically enforced by the system. The response will be formatted as valid JSON matching the required structure.
+CRITICAL: Output ONLY valid JSON. Do NOT include any text, explanations, or commentary.
+The system uses structured output - your entire response must be parseable JSON matching the schema.
+Do NOT write things like "Here's your plan" or explanations - ONLY the JSON object.
 
-Focus on creating a detailed, personalized plan based on all the information gathered during our conversation. Ensure:
+The JSON structure includes:
+- meta: plan_name, plan_type, athlete_level, total_duration_weeks, start_date
+- periodization_overview: phases array
+- schedule: array of weeks with days
 
-1. All workouts are actionable and specific (e.g., "Run 5 min @ Zone 2")
-2. Weekly progression is logical and safe (max 10% increase per week)
-3. All constraints mentioned by the athlete are respected
-4. The plan reflects the selected strategy (BEGINNER, FITNESS, WEIGHT_LOSS, or COMPETITION)
-
-The system will automatically format your response as JSON and ask the user if they want to save or edit the plan.
+After you output the JSON, the system will automatically:
+1. Display a brief summary to the user
+2. Show a "Save Plan" button
+3. Allow them to save to their Training Plan section
 
 ` + JSON_SCHEMA_CONSTRAINTS + `
 
-Remember: Create a comprehensive, personalized training plan that addresses the athlete's goals, current fitness level, available time, and any health constraints.`,
+REMEMBER: Output ONLY the JSON object. No text before or after.`,
     nextId: null
   }
 ];

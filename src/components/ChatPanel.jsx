@@ -423,6 +423,8 @@ const ChatPanel = ({ width = 320 }) => {
         setCurrentChatTitle(newTitle);
         // Update session title in database
         await touchChatSession(chatId, newTitle);
+        // Refresh sessions to show updated title in history
+        await refreshSessions();
       }
       
       await saveChatMessage('user', userMessage, chatId, newTitle);
@@ -683,7 +685,10 @@ const ChatPanel = ({ width = 320 }) => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => startNewChat('New conversation')}
+            onClick={async () => {
+              await startNewChat('New conversation');
+              setShowHistoryView(false); // Switch to chat view
+            }}
             className="px-3 py-2 rounded-md bg-yale-blue-500 text-white text-sm font-medium hover:bg-yale-blue-600"
           >
             New chat
@@ -710,30 +715,26 @@ const ChatPanel = ({ width = 320 }) => {
               {chatSessions.map(session => (
                 <div
                   key={session.id}
-                  className={`group relative w-full text-left px-4 py-3 rounded-lg border border-lavender-blush-200 dark:border-lavender-blush-700 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 transition-colors cursor-pointer ${
+                  className={`group relative w-full text-left px-4 py-3 pr-10 rounded-lg border border-lavender-blush-200 dark:border-lavender-blush-700 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 transition-colors cursor-pointer ${
                     session.id === currentChatId ? 'bg-lavender-blush-100 dark:bg-lavender-blush-800 border-yale-blue-500' : ''
                   }`}
                   onClick={() => selectChat(session)}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
-                        {session.title || 'Conversation'}
-                      </div>
-                      <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 mt-1">
-                        {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => handleDeleteChat(e, session.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-lavender-blush-400 hover:text-red-500 dark:hover:text-red-400 transition-all"
-                      title="Delete chat"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                  <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate pr-2">
+                    {session.title || 'Conversation'}
                   </div>
+                  <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 mt-1">
+                    {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteChat(e, session.id)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-lavender-blush-400 hover:text-red-500 dark:hover:text-red-400 transition-opacity"
+                    title="Delete chat"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
               ))}
             </div>

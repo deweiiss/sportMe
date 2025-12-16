@@ -1181,6 +1181,41 @@ export const listChatSessions = async (limit = 50) => {
 };
 
 /**
+ * Delete a chat session and all its messages
+ * @param {string} chatId
+ */
+export const deleteChatSession = async (chatId) => {
+  if (!chatId) return { error: 'chatId is required' };
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { error: 'User not authenticated' };
+
+    // First delete all messages in the chat
+    const { error: messagesError } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('chat_session_id', chatId);
+
+    if (messagesError) {
+      console.error('Error deleting chat messages:', messagesError);
+      // Continue anyway to try deleting the session
+    }
+
+    // Then delete the chat session
+    const { error } = await supabase
+      .from('chat_sessions')
+      .delete()
+      .eq('id', chatId)
+      .eq('user_id', user.id); // Ensure user owns this chat
+
+    if (error) return { error: error.message };
+    return { data: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+};
+
+/**
  * Update chat session last_updated and optional title
  */
 export const touchChatSession = async (chatId, title) => {

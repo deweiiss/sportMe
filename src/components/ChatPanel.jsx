@@ -6,13 +6,44 @@ import {
   getChatHistory, 
   saveChatMessage,
   createChatSession,
-  listChatSessions
+  listChatSessions,
+  deleteChatSession,
+  touchChatSession
 } from '../services/supabase';
 import { extractProfileData } from '../services/profileExtraction';
 import { getUserContext } from '../services/contextRetrieval';
 import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prompts';
 import { getTrainingPlans, saveTrainingPlan } from '../services/supabase';
 import { extractTrainingPlanJSON } from '../utils/jsonExtraction';
+
+/**
+ * Generate a meaningful chat title from the first user message
+ */
+const generateChatTitle = (message) => {
+  if (!message || typeof message !== 'string') return 'New conversation';
+  
+  // Clean up the message
+  let title = message.trim();
+  
+  // Remove markdown formatting
+  title = title.replace(/[*_#`]/g, '');
+  
+  // Take first sentence or first 50 chars
+  const firstSentence = title.split(/[.!?]/)[0];
+  if (firstSentence && firstSentence.length > 5) {
+    title = firstSentence;
+  }
+  
+  // Truncate if too long
+  if (title.length > 50) {
+    title = title.substring(0, 47) + '...';
+  }
+  
+  // Capitalize first letter
+  title = title.charAt(0).toUpperCase() + title.slice(1);
+  
+  return title || 'New conversation';
+};
 
 /**
  * Generate a brief summary message for a training plan
@@ -383,7 +414,18 @@ const ChatPanel = ({ width = 320 }) => {
       setDetectedPlan(null);
 
     try {
-      await saveChatMessage('user', userMessage, chatId, currentChatTitle);
+      // Auto-generate title from first user message
+      const isFirstMessage = messages.length === 0;
+      let newTitle = currentChatTitle;
+      
+      if (isFirstMessage && currentChatTitle === 'New conversation') {
+        newTitle = generateChatTitle(userMessage);
+        setCurrentChatTitle(newTitle);
+        // Update session title in database
+        await touchChatSession(chatId, newTitle);
+      }
+      
+      await saveChatMessage('user', userMessage, chatId, newTitle);
 
       const messageHistory = messages.map(msg => ({
         role: msg.role,
@@ -523,6 +565,30 @@ const ChatPanel = ({ width = 320 }) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleDeleteChat = async (e, sessionId) => {
+    e.stopPropagation(); // Prevent selecting the chat when clicking delete
+    
+    if (!confirm('Delete this chat? This cannot be undone.')) return;
+    
+    const { error } = await deleteChatSession(sessionId);
+    if (error) {
+      console.error('Error deleting chat:', error);
+      alert('Failed to delete chat');
+      return;
+    }
+    
+    // Refresh sessions list
+    await refreshSessions();
+    
+    // If we deleted the current chat, start a new one
+    if (sessionId === currentChatId) {
+      setCurrentChatId(null);
+      setCurrentChatTitle('New conversation');
+      setMessages([]);
+      setDetectedPlan(null);
+    }
+  };
+
   const handleSavePlan = async () => {
     if (!detectedPlan || savingPlan) return;
 
@@ -642,20 +708,33 @@ const ChatPanel = ({ width = 320 }) => {
           ) : (
             <div className="space-y-2">
               {chatSessions.map(session => (
-                <button
+                <div
                   key={session.id}
-                  className={`w-full text-left px-4 py-3 rounded-lg border border-lavender-blush-200 dark:border-lavender-blush-700 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 transition-colors ${
+                  className={`group relative w-full text-left px-4 py-3 rounded-lg border border-lavender-blush-200 dark:border-lavender-blush-700 hover:bg-lavender-blush-100 dark:hover:bg-lavender-blush-800 transition-colors cursor-pointer ${
                     session.id === currentChatId ? 'bg-lavender-blush-100 dark:bg-lavender-blush-800 border-yale-blue-500' : ''
                   }`}
                   onClick={() => selectChat(session)}
                 >
-                  <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
-                    {session.title || 'Conversation'}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-lavender-blush-900 dark:text-lavender-blush-50 truncate">
+                        {session.title || 'Conversation'}
+                      </div>
+                      <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 mt-1">
+                        {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteChat(e, session.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-lavender-blush-400 hover:text-red-500 dark:hover:text-red-400 transition-all"
+                      title="Delete chat"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
-                  <div className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 mt-1">
-                    {session.last_updated ? new Date(session.last_updated).toLocaleString() : ''}
-                  </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

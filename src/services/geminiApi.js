@@ -200,6 +200,7 @@ export const getTrainingPlanJsonSchema = () => {
       },
       schedule: {
         type: "array",
+        description: "Array of training weeks. WEEK ALIGNMENT RULES: 1) All weeks end on Sunday. 2) If start_date is not Monday, Week 1 is a partial week (starts on start_date, ends Sunday). 3) Weeks 2+ are full Monday-Sunday weeks. 4) Last week ends 1 day before goal date.",
         items: {
           type: "object",
           properties: {
@@ -224,24 +225,26 @@ export const getTrainingPlanJsonSchema = () => {
               type: "array",
               items: { 
                 type: "string",
-                description: `Day information in pipe-delimited format: 'day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|workout_segments'.
+                description: `FORMAT: day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|SEGMENTS
 
-IMPORTANT FOR WORKOUT SEGMENTS:
-- For REST days: workout_segments is empty (just end after duration)
-- For ALL other days: ALWAYS include MULTIPLE segments separated by ||
-- Each segment format: SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone
-- Segment types: WARMUP, MAIN, INTERVAL, RECOVERY, COOLDOWN
+SEGMENTS FORMAT (use || between segments):
+SEGMENT_TYPE:description,duration_value unit,Zone N
 
-EXAMPLES:
-- Rest day: 'Sunday|7|true|false|REST|Rest Day|0|'
-- Easy run (3 segments): 'Monday|1|false|false|RUN|Easy Run|40|WARMUP:Easy jog,5 min,Zone 1||MAIN:Run at conversational pace,30 min,Zone 2||COOLDOWN:Walk,5 min,Zone 1'
-- Tempo run (3 segments): 'Wednesday|3|false|false|RUN|Tempo Workout|50|WARMUP:Easy jog,10 min,Zone 2||MAIN:Tempo pace run,30 min,Zone 4||COOLDOWN:Easy jog,10 min,Zone 2'
-- Intervals (5 segments): 'Friday|5|false|false|RUN|Interval Training|45|WARMUP:Easy jog,10 min,Zone 2||INTERVAL:400m fast,2 min,Zone 5||RECOVERY:Jog recovery,2 min,Zone 1||MAIN:Repeat 6x,20 min,Zone 4||COOLDOWN:Easy jog,5 min,Zone 2'
-- Long run (3 segments): 'Saturday|6|false|false|RUN|Long Run|90|WARMUP:Easy start,10 min,Zone 1||MAIN:Steady run,70 min,Zone 2||COOLDOWN:Walk cooldown,10 min,Zone 1'
+SEGMENT TYPES: WARMUP, MAIN, COOLDOWN, INTERVAL, RECOVERY
 
-ALWAYS include at least WARMUP, MAIN, and COOLDOWN segments for running workouts!`
+⚠️ EVERY RUN MUST HAVE 3+ SEGMENTS: WARMUP||MAIN||COOLDOWN
+
+COPY THESE EXAMPLES EXACTLY:
+
+REST: 'Monday|1|true|false|REST|Rest Day|0|'
+
+EASY RUN: 'Tuesday|2|false|false|RUN|Easy Run|40|WARMUP:Easy jog,5 min,Zone 1||MAIN:Steady run,30 min,Zone 2||COOLDOWN:Walk,5 min,Zone 1'
+
+TEMPO: 'Wednesday|3|false|false|RUN|Tempo|50|WARMUP:Jog,10 min,Zone 2||MAIN:Tempo pace,30 min,Zone 4||COOLDOWN:Jog,10 min,Zone 2'
+
+LONG RUN: 'Sunday|7|false|false|RUN|Long Run|90|WARMUP:Easy,10 min,Zone 1||MAIN:Steady,70 min,Zone 2||COOLDOWN:Walk,10 min,Zone 1'`
               },
-              description: "Array of 7 days in the week. Each day is a pipe-delimited string. CRITICAL: For running workouts, ALWAYS include multiple segments (WARMUP||MAIN||COOLDOWN at minimum). Use || to separate segments."
+              description: "Array of days. CRITICAL: Use || to separate segments. Every run needs WARMUP||MAIN||COOLDOWN minimum."
             }
           },
           required: ["week_number", "phase_name", "weekly_focus", "days"]
@@ -388,11 +391,26 @@ You have direct access to this data. Use it to personalize your coaching.` }]
           // If using structured output, parse JSON and return separately from display text
           if (useStructuredOutput && responseText) {
             console.log('📋 Parsing structured output, response length:', responseText.length);
-            console.log('📋 First 200 chars:', responseText.substring(0, 200));
+            console.log('📋 First 500 chars:', responseText.substring(0, 500));
             try {
               const planData = JSON.parse(responseText);
               console.log('✅ JSON parsed successfully, plan name:', planData.meta?.plan_name);
+              
+              // Debug: Check what format days are in
+              if (planData.schedule?.[0]?.days?.[0]) {
+                const firstDay = planData.schedule[0].days[0];
+                console.log('🔍 First day type:', typeof firstDay);
+                console.log('🔍 First day value:', typeof firstDay === 'string' ? firstDay.substring(0, 200) : JSON.stringify(firstDay).substring(0, 200));
+              }
+              
               const structuredPlan = parseFlattenedTrainingPlan(planData);
+              
+              // Debug: Check parsed structure
+              if (structuredPlan.schedule?.[0]?.days?.[0]) {
+                const parsedFirstDay = structuredPlan.schedule[0].days[0];
+                console.log('🔍 Parsed first day segments:', parsedFirstDay.workout_structure?.length || 0);
+                console.log('🔍 Segments:', JSON.stringify(parsedFirstDay.workout_structure || []));
+              }
               
               // Generate appropriate message based on whether this is a new plan or modification
               const isModification = sequenceStep?.id === 'modify-plan';

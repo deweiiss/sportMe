@@ -13,7 +13,27 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
     ...flattenedPlan,
     schedule: flattenedPlan.schedule.map(week => ({
       ...week,
-      days: week.days.map(dayString => {
+      days: week.days.map(dayData => {
+        // Check if day is already an object (not a string)
+        if (typeof dayData === 'object' && dayData !== null) {
+          console.log('📋 Day is already object:', dayData.day_name);
+          console.log('   - workout_structure:', dayData.workout_structure?.length || 0);
+          console.log('   - workouts:', dayData.workouts?.length || 0);
+          console.log('   - segments:', dayData.segments?.length || 0);
+          console.log('   - All keys:', Object.keys(dayData).join(', '));
+          
+          // Try to find segments in various possible fields
+          const segments = dayData.workout_structure || dayData.workouts || dayData.segments || [];
+          console.log('   - Final segments count:', segments.length);
+          
+          return {
+            ...dayData,
+            workout_structure: segments
+          };
+        }
+        
+        // It's a string - parse it
+        const dayString = dayData;
         // Format: "day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|workout_segments"
         // workout_segments format: "SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone||SEGMENT_TYPE:..."
         const parts = dayString.split('|');
@@ -34,15 +54,20 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
         }
 
         // Parse workout segments if present
-        const workoutSegments = parts[7] && parts[7].trim() 
-          ? parts[7].split('||').map(segmentStr => {
+        const rawSegments = parts[7] && parts[7].trim();
+        console.log('📋 Raw segments for', parts[0], ':', rawSegments ? rawSegments.substring(0, 100) : '(empty)');
+        
+        const workoutSegments = rawSegments
+          ? rawSegments.split('||').map(segmentStr => {
               // Format: "SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone"
               const trimmed = segmentStr.trim();
               if (!trimmed) return null;
               
+              console.log('  → Parsing segment:', trimmed);
+              
               const [typeAndDesc, duration, zone] = trimmed.split(',');
               if (!typeAndDesc || !duration || !zone) {
-                console.warn('Invalid segment format:', segmentStr);
+                console.warn('  ⚠️ Invalid segment format (missing parts):', segmentStr);
                 return null;
               }
               
@@ -52,26 +77,30 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
               // Parse duration: "30 min" or "5 km" or "400 m"
               const durationMatch = duration.trim().match(/(\d+(?:\.\d+)?)\s*(min|km|m)/);
               if (!durationMatch) {
-                console.warn('Invalid duration format:', duration);
+                console.warn('  ⚠️ Invalid duration format:', duration);
                 return null;
               }
               
               // Parse zone: "Zone 2" or "Zone 5"
               const zoneMatch = zone.trim().match(/Zone\s*(\d+)/i);
               if (!zoneMatch) {
-                console.warn('Invalid zone format:', zone);
+                console.warn('  ⚠️ Invalid zone format:', zone);
                 return null;
               }
               
-              return {
+              const segment = {
                 segment_type: segmentType.trim(),
                 description: description,
                 duration_value: parseFloat(durationMatch[1]),
                 duration_unit: durationMatch[2],
                 intensity_zone: parseInt(zoneMatch[1])
               };
+              console.log('  ✅ Parsed segment:', segment.segment_type, segment.description);
+              return segment;
             }).filter(segment => segment !== null)
           : [];
+        
+        console.log('📋 Total segments for', parts[0], ':', workoutSegments.length);
 
         return {
           day_name: parts[0],

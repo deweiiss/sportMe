@@ -163,6 +163,7 @@ export const getUserContext = async () => {
     
     // Add current date for date calculations
     const today = new Date();
+    const currentYear = today.getFullYear();
     const dateStr = today.toISOString().split('T')[0];
     const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
     const fullDate = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -170,11 +171,17 @@ export const getUserContext = async () => {
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
     const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
     
-    contextParts.push('=== CURRENT DATE (IMPORTANT!) ===');
-    contextParts.push(`Today is: ${fullDate}`);
-    contextParts.push(`Today's date (YYYY-MM-DD): ${dateStr}`);
-    contextParts.push(`Tomorrow's date (default plan start): ${tomorrowStr}`);
-    contextParts.push('IMPORTANT: Use these exact dates for any date calculations. The year is ' + today.getFullYear() + '.');
+    contextParts.push('╔══════════════════════════════════════════════════════════════╗');
+    contextParts.push('║  CURRENT DATE - READ THIS CAREFULLY!                         ║');
+    contextParts.push('╠══════════════════════════════════════════════════════════════╣');
+    contextParts.push(`║  TODAY: ${fullDate}`);
+    contextParts.push(`║  TODAY (YYYY-MM-DD): ${dateStr}`);
+    contextParts.push(`║  TOMORROW (default start): ${tomorrowStr}`);
+    contextParts.push(`║  THE YEAR IS: ${currentYear} (NOT 2023, NOT 2024!)`);
+    contextParts.push('║  ');
+    contextParts.push('║  ⚠️  ALL dates in your plan MUST use year ' + currentYear + ' or later!');
+    contextParts.push('║  ⚠️  start_date MUST be >= ' + dateStr);
+    contextParts.push('╚══════════════════════════════════════════════════════════════╝');
     contextParts.push('');
     
     // Fetch athlete profile

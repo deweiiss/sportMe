@@ -390,15 +390,24 @@ GENERAL RULES FOR PLAN CREATION:
 
 4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
-IMPORTANT DATE CALCULATION - READ CAREFULLY:
-- Look for "CURRENT DATE" in the conversation context - it shows today's date and tomorrow's date
-- The context includes "Tomorrow's date (default plan start): YYYY-MM-DD" - use this as the default start
-- ALWAYS use the YEAR from the context (do NOT assume 2024 - check the actual year!)
-- Use the athlete's specified start date if they provided one during intake
-- If NO start date was specified, use the "Tomorrow's date" from the context
-- Calculate the plan duration to END at the athlete's goal date (e.g., race day)
-- The start_date in the JSON must be in YYYY-MM-DD format
-- Double-check your dates make sense: start_date should be AFTER today's date
+⚠️⚠️⚠️ CRITICAL DATE RULES - MUST FOLLOW ⚠️⚠️⚠️
+- Look for the "CURRENT DATE" box in the conversation - it shows THE YEAR!
+- The year is shown as "THE YEAR IS: XXXX" - USE THIS EXACT YEAR!
+- DO NOT use 2023 or 2024 unless the context explicitly says so!
+- start_date in your JSON MUST be in format YYYY-MM-DD with the CORRECT year
+- If no start date specified, use "Tomorrow's date" from the context
+- VALIDATE: Your start_date MUST be >= today's date from the context
+- VALIDATE: All dates must use the year shown in the context (currently 2025!)
+
+WEEK STRUCTURE - CRITICAL:
+- Every week MUST end on Sunday (weeks are aligned to the calendar)
+- If start_date is NOT a Monday:
+  * Week 1 starts on the start_date and ends on the following Sunday (partial week)
+  * Example: If plan starts Wednesday Dec 18, Week 1 = Wed, Thu, Fri, Sat, Sun (5 days)
+- From Week 2 onwards: All weeks run Monday to Sunday (7 days each)
+- The LAST week should end 1 day before the goal/race date
+- Each week's "days" array should contain the actual days of that week (5-7 days for week 1, 7 days for other weeks)
+- Use actual day names (Monday, Tuesday, etc.) that match the calendar dates
 
 OUTPUT FORMAT:
 

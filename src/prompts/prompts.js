@@ -233,8 +233,9 @@ export const trainingPlanSequence = [
     systemPrompt: BASE_COACH_PROMPT,
     userPrompt: `Start athlete intake.
 
-First, ANALYZE the provided User Context (Strava history, profile).
-If the context contains answers to the critical questions below, DO NOT ask them again. Instead, summarize what you know and ask for confirmation.
+First, CHECK if User Context (Strava history, profile) is provided.
+IF context is available and contains answers to the critical questions below, DO NOT ask them again. Instead, summarize what you know and ask for confirmation.
+IF NO context is available, proceed with asking the questions.
 
 Ask the user ONLY for missing critical information required to design a safe and effective running training plan.
 

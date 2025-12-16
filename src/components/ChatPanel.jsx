@@ -90,8 +90,9 @@ const ChatPanel = ({ width = 320 }) => {
   const [userContext, setUserContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [activePlan, setActivePlan] = useState(null);
-  const [detectedPlan, setDetectedPlan] = useState(null); // Store detected training plan JSON
+  const [detectedPlan, setDetectedPlan] = useState(null); // Store detected training plan JSON (new or modified)
   const [discussingPlanId, setDiscussingPlanId] = useState(null); // Track which plan is being discussed for updates
+  const [originalPlanForDiscussion, setOriginalPlanForDiscussion] = useState(null); // Store original plan for context in discussion mode
   const [savingPlan, setSavingPlan] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => {
     // Load from localStorage, default to 'gemini'
@@ -229,6 +230,8 @@ const ChatPanel = ({ width = 320 }) => {
     setMessages([]);
     setActiveSequenceStepId(null);
     setDetectedPlan(null); // Clear detected plan when starting new chat
+    setOriginalPlanForDiscussion(null); // Clear plan discussion state
+    setDiscussingPlanId(null);
     await refreshSessions();
     return data.id;
   };
@@ -241,6 +244,8 @@ const ChatPanel = ({ width = 320 }) => {
     setShowSessions(false);
     setShowHistoryView(false);
     setDetectedPlan(null); // Clear detected plan when switching chats
+    setOriginalPlanForDiscussion(null); // Clear plan discussion state
+    setDiscussingPlanId(null);
     await loadChatHistory(session.id);
   };
 
@@ -399,8 +404,10 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       setMessages([assistantMessage]);
       await saveChatMessage('assistant', assistantMessage.content, newChatId);
       
-      // Store the plan so it can be modified
-      setDetectedPlan(existingPlanData);
+      // Store the original plan for context (NOT in detectedPlan - that's only for modified plans)
+      setOriginalPlanForDiscussion(existingPlanData);
+      // Don't set detectedPlan here - only set it when LLM outputs a modified plan
+      setDetectedPlan(null);
       
     } catch (error) {
       console.error('Error starting plan discussion:', error);
@@ -559,6 +566,7 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       setIsLoading(true);
       
       // Clear detected plan when user sends a new message (will be re-detected if response contains plan)
+      // In discussion mode, this clears any previous modified plan, but originalPlanForDiscussion stays
       setDetectedPlan(null);
 
     try {
@@ -586,6 +594,46 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       if (needsContext(userMessage) || messages.length === 0) {
         context = await fetchUserContext();
       }
+      
+      // If we're discussing an existing plan, add special context and instructions
+      const planToDiscuss = originalPlanForDiscussion || detectedPlan;
+      let planModificationSystemPrompt = null;
+      
+      if (discussingPlanId && planToDiscuss) {
+        const planJSON = JSON.stringify(planToDiscuss, null, 2);
+        
+        // Use a custom system prompt for plan modification mode
+        planModificationSystemPrompt = `You are a running coach helping modify an existing training plan.
+
+CRITICAL INSTRUCTION FOR PLAN MODIFICATIONS:
+
+When the user requests ANY changes to the plan (different days, adjusted workouts, changed intensity, etc.), you MUST:
+
+1. Write a brief 1-2 sentence acknowledgment
+2. Output the COMPLETE UPDATED PLAN as a JSON code block
+
+Your response format when making changes:
+---
+"I've updated the plan to [brief description of changes]."
+
+\`\`\`json
+{THE COMPLETE UPDATED PLAN JSON HERE}
+\`\`\`
+---
+
+RULES:
+- The JSON must be VALID and COMPLETE (all weeks, all days)
+- DO NOT output a text summary or bullet points - ONLY JSON
+- DO NOT describe each week in prose - output the raw JSON
+- The code block MUST start with \`\`\`json and end with \`\`\`
+
+THE CURRENT PLAN TO MODIFY:
+\`\`\`json
+${planJSON}
+\`\`\`
+
+Apply the user's requested changes to this JSON and output the complete updated version.`;
+      }
 
       const currentModel = selectedModel?.toLowerCase()?.trim();
       const sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
@@ -595,8 +643,25 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       
       let assistantResponse;
       console.log('✅ Calling Gemini API (with model fallback chain)');
+      
+      // In plan modification mode, use structured output to force JSON
+      let finalUserMessage = userMessage;
+      let finalSequenceStep = sequenceStep;
+      
+      if (planModificationSystemPrompt) {
+        console.log('📝 Plan modification mode active - using structured output');
+        // Use a fake sequence step to trigger structured output
+        finalSequenceStep = { id: 'modify-plan' };
+        // Append instruction to user message
+        finalUserMessage = `${userMessage}
+
+Apply this change to the training plan and output the COMPLETE updated plan as JSON.`;
+      }
+      
       try {
-        assistantResponse = await sendGeminiMessage(messageHistory, userMessage, null, context, sequenceStep);
+        // Use custom system prompt for plan modification mode, otherwise use sequence step
+        const systemPromptOverride = planModificationSystemPrompt || null;
+        assistantResponse = await sendGeminiMessage(messageHistory, finalUserMessage, systemPromptOverride, context, finalSequenceStep);
         console.log('✅ Gemini response received, length:', assistantResponse?.length);
       } catch (geminiError) {
         console.error('❌ Gemini API error:', geminiError);
@@ -613,11 +678,16 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
         messageContent = assistantResponse.text || 'Training plan generated. Would you like to save it?';
       } else if (typeof assistantResponse === 'string') {
         // Regular response: try to extract plan JSON from text
+        console.log('🔍 Attempting to extract plan JSON from response...');
+        console.log('🔍 Response preview:', assistantResponse.substring(0, 500));
         const extractedPlan = extractTrainingPlanJSON(assistantResponse);
         if (extractedPlan) {
+          console.log('✅ Successfully extracted plan JSON!');
           planDataFromResponse = extractedPlan;
           // Replace raw JSON with a user-friendly summary
           messageContent = generatePlanSummary(extractedPlan);
+        } else {
+          console.log('⚠️ No valid plan JSON found in response');
         }
       }
 
@@ -629,12 +699,15 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       setMessages(prev => [...prev, newAssistantMessage]);
       await saveChatMessage('assistant', messageContent, chatId, currentChatTitle);
 
-      // Store detected plan if available
+      // Store detected plan if available (this could be a new plan or a modified plan)
       if (planDataFromResponse) {
         setDetectedPlan(planDataFromResponse);
-      } else {
-        setDetectedPlan(null);
+        // If in discussion mode, update the original plan reference to the modified version
+        if (discussingPlanId) {
+          setOriginalPlanForDiscussion(planDataFromResponse);
+        }
       }
+      // Note: detectedPlan was already cleared when user sent the message
 
       // Update sequence step for next message (prompts are sent to LLM internally, not shown to user)
       if (sequenceStep?.nextId) {
@@ -718,6 +791,8 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       setCurrentChatTitle('New conversation');
       setMessages([]);
       setDetectedPlan(null);
+      setOriginalPlanForDiscussion(null);
+      setDiscussingPlanId(null);
     }
   };
 
@@ -783,15 +858,16 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       const successMessage = {
         role: 'assistant',
         content: isUpdate 
-          ? `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been **updated**! Your changes have been saved.`
+          ? `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been **updated**! Your changes have been saved.\n\n💡 **Tip:** Refresh the Training Plan page to see your updated plan.`
           : `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been saved! You can view it in the Training Plan page.`,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [...prev, successMessage]);
       await saveChatMessage('assistant', successMessage.content, currentChatId, currentChatTitle);
       
-      // Clear detected plan and discussion ID
+      // Clear detected plan and discussion state
       setDetectedPlan(null);
+      setOriginalPlanForDiscussion(null);
       setDiscussingPlanId(null);
     } catch (error) {
       console.error('Error saving plan:', error);

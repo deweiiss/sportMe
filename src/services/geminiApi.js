@@ -23,6 +23,46 @@ const MAX_RETRY_DELAY_MS = 15000;    // Max 15 seconds between retries
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Generate a summary of plan modifications for the user
+ */
+const generatePlanModificationSummary = (plan) => {
+  if (!plan) return 'I\'ve updated the plan. Would you like to save these changes?';
+  
+  const meta = plan.meta || {};
+  const schedule = plan.schedule || [];
+  
+  // Extract running days from the first week
+  const firstWeek = schedule[0];
+  const runningDays = [];
+  if (firstWeek?.days) {
+    firstWeek.days.forEach(day => {
+      if (day.workouts && day.workouts.length > 0) {
+        const hasRun = day.workouts.some(w => 
+          w.workout_type?.toLowerCase().includes('run') || 
+          w.workout_description?.toLowerCase().includes('run')
+        );
+        if (hasRun) {
+          runningDays.push(day.day_name || `Day ${day.day_index + 1}`);
+        }
+      }
+    });
+  }
+  
+  let summary = '✅ **I\'ve updated your training plan!**\n\n';
+  summary += '**Updated plan configuration:**\n';
+  summary += `- **Plan name:** ${meta.plan_name || 'Training Plan'}\n`;
+  summary += `- **Duration:** ${meta.total_duration_weeks || schedule.length} weeks\n`;
+  
+  if (runningDays.length > 0) {
+    summary += `- **Running days:** ${runningDays.join(', ')}\n`;
+  }
+  
+  summary += '\nWould you like to save these changes, or should I make further adjustments?';
+  
+  return summary;
+};
+
+/**
  * Check if error is a retryable 503/overloaded error
  */
 const isRetryableError = (error) => {
@@ -257,8 +297,8 @@ You have direct access to this data. Use it to personalize your coaching.` }]
       parts: [{ text: combinedUserMessage }]
     });
 
-    // Determine if we should use structured output (for generate-plan step)
-    const useStructuredOutput = sequenceStep?.id === 'generate-plan';
+    // Determine if we should use structured output (for generate-plan step or plan modification)
+    const useStructuredOutput = sequenceStep?.id === 'generate-plan' || sequenceStep?.id === 'modify-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
     
     console.log('📋 Sequence step:', sequenceStep?.id || 'none');
@@ -318,8 +358,15 @@ You have direct access to this data. Use it to personalize your coaching.` }]
               const planData = JSON.parse(responseText);
               console.log('✅ JSON parsed successfully, plan name:', planData.meta?.plan_name);
               const structuredPlan = parseFlattenedTrainingPlan(planData);
+              
+              // Generate appropriate message based on whether this is a new plan or modification
+              const isModification = sequenceStep?.id === 'modify-plan';
+              const displayText = isModification 
+                ? generatePlanModificationSummary(structuredPlan)
+                : 'Would you like to save this training plan, or would you like me to make any adjustments to it?';
+              
               return {
-                text: 'Would you like to save this training plan, or would you like me to make any adjustments to it?',
+                text: displayText,
                 planData: structuredPlan
               };
             } catch (parseError) {
@@ -463,8 +510,8 @@ You have direct access to this data. Use it to personalize your coaching.` }]
       parts: [{ text: combinedUserMessage }]
     });
 
-    // Determine if we should use structured output (for generate-plan step)
-    const useStructuredOutput = sequenceStep?.id === 'generate-plan';
+    // Determine if we should use structured output (for generate-plan step or plan modification)
+    const useStructuredOutput = sequenceStep?.id === 'generate-plan' || sequenceStep?.id === 'modify-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
 
     // Prepare config for structured output if needed
@@ -504,7 +551,12 @@ You have direct access to this data. Use it to personalize your coaching.` }]
           const planData = JSON.parse(fullText);
           // Parse flattened format to structured format
           const structuredPlan = parseFlattenedTrainingPlan(planData);
-          const displayText = 'Would you like to save this training plan, or would you like me to make any adjustments to it?';
+          
+          // Generate appropriate message based on whether this is a new plan or modification
+          const isModification = sequenceStep?.id === 'modify-plan';
+          const displayText = isModification 
+            ? generatePlanModificationSummary(structuredPlan)
+            : 'Would you like to save this training plan, or would you like me to make any adjustments to it?';
           
           // If we have an onChunk callback, send the display text as a final chunk
           if (onChunk) {

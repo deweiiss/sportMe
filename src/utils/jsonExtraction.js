@@ -11,23 +11,22 @@ export const extractTrainingPlanJSON = (text) => {
 
   try {
     // First, try to find JSON in code blocks (```json ... ```)
-    const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/g;
-    let match;
+    // Use a more robust extraction that finds the content between ```json and ```
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     let jsonString = null;
 
-    // Try to find JSON in code blocks
-    while ((match = codeBlockRegex.exec(text)) !== null) {
-      jsonString = match[1];
-      break; // Take the first match
+    if (codeBlockMatch) {
+      const content = codeBlockMatch[1].trim();
+      // Find the complete JSON object with balanced braces
+      jsonString = extractBalancedJSON(content);
     }
 
     // If no code block found, try to find raw JSON object
     if (!jsonString) {
-      // Look for JSON object starting with { and containing "meta" and "schedule"
-      const jsonObjectRegex = /\{[\s\S]*?"meta"[\s\S]*?"schedule"[\s\S]*?\}/;
-      const objectMatch = text.match(jsonObjectRegex);
-      if (objectMatch) {
-        jsonString = objectMatch[0];
+      // Look for JSON object starting with { - extract with balanced braces
+      const startIndex = text.indexOf('{');
+      if (startIndex !== -1) {
+        jsonString = extractBalancedJSON(text.substring(startIndex));
       }
     }
 
@@ -58,6 +57,58 @@ export const extractTrainingPlanJSON = (text) => {
     console.error('Error extracting training plan JSON:', error);
     return null;
   }
+};
+
+/**
+ * Extract a balanced JSON object from text (handles nested braces)
+ * @param {string} text - Text starting with or containing a JSON object
+ * @returns {string|null} - Extracted JSON string or null
+ */
+const extractBalancedJSON = (text) => {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+  
+  const startIndex = text.indexOf('{');
+  if (startIndex === -1) {
+    return null;
+  }
+  
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = startIndex; i < text.length; i++) {
+    const char = text[i];
+    
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          return text.substring(startIndex, i + 1);
+        }
+      }
+    }
+  }
+  
+  return null; // Unbalanced braces
 };
 
 /**

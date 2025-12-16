@@ -91,6 +91,7 @@ const ChatPanel = ({ width = 320 }) => {
   const [contextLoading, setContextLoading] = useState(false);
   const [activePlan, setActivePlan] = useState(null);
   const [detectedPlan, setDetectedPlan] = useState(null); // Store detected training plan JSON
+  const [discussingPlanId, setDiscussingPlanId] = useState(null); // Track which plan is being discussed for updates
   const [savingPlan, setSavingPlan] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => {
     // Load from localStorage, default to 'gemini'
@@ -145,7 +146,7 @@ const ChatPanel = ({ width = 320 }) => {
     const handler = async (event) => {
       const { plan, planData } = event.detail || {};
       if (planData) {
-        await startPlanDiscussionFlow(planData);
+        await startPlanDiscussionFlow(planData, plan?.id);
       }
     };
     window.addEventListener('startPlanDiscussion', handler);
@@ -332,19 +333,23 @@ const ChatPanel = ({ width = 320 }) => {
   };
   
   // Start a chat to discuss/modify an existing training plan
-  const startPlanDiscussionFlow = async (existingPlanData) => {
+  const startPlanDiscussionFlow = async (existingPlanData, planId = null) => {
     const planName = existingPlanData?.meta?.plan_name || 'Training Plan';
     const newChatId = await startNewChat(`Discuss: ${planName}`);
     if (!newChatId) return;
+    
+    // Store the plan ID for updates
+    setDiscussingPlanId(planId);
     
     // Don't use the sequence steps - this is a free-form discussion
     setActiveSequenceStepId(null);
     setIsLoading(true);
     
     try {
-      // Build plan context string
+      // Build plan context with full JSON for modifications
+      const planJSON = JSON.stringify(existingPlanData, null, 2);
       const planContext = `
-=== EXISTING TRAINING PLAN TO DISCUSS ===
+=== EXISTING TRAINING PLAN TO DISCUSS/MODIFY ===
 Plan Name: ${existingPlanData.meta?.plan_name || 'Training Plan'}
 Plan Type: ${existingPlanData.meta?.plan_type || 'Unknown'}
 Duration: ${existingPlanData.meta?.total_duration_weeks || '?'} weeks
@@ -353,7 +358,15 @@ Goal: ${existingPlanData.meta?.plan_goal || 'Not specified'}
 
 Phases: ${existingPlanData.periodization_overview?.phases?.map(p => p.phase_name).join(', ') || 'N/A'}
 
-The user wants to discuss, review, or modify this plan. You have full access to the plan data.
+FULL PLAN DATA (JSON):
+${planJSON}
+
+The user wants to discuss, review, or MODIFY this plan.
+When they request CHANGES (like changing days, adjusting workouts, etc.):
+1. Confirm what changes you'll make
+2. Output the COMPLETE UPDATED PLAN as JSON in a code block with \`\`\`json
+3. The system will detect the JSON and allow them to save the updated plan
+
 Be ready to explain workouts, adjust the schedule, change intensity, or make any modifications they request.
 `;
       
@@ -370,6 +383,8 @@ Greet them briefly and let them know you can:
 - Adjust the schedule (move workouts, change days)
 - Modify intensity or volume
 - Answer questions about the plan
+
+When they ask for changes, you'll output the updated plan as JSON so they can save it.
 
 Keep your greeting short and ask what they'd like to discuss or change.`;
 
@@ -417,6 +432,37 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       'improve', 'faster', 'marathon', 'race', 'goal'
     ];
     return contextKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+  
+  // Check if user is asking to create a training plan
+  const wantsTrainingPlan = (message) => {
+    if (!message || typeof message !== 'string') return false;
+    const lowerMessage = message.toLowerCase();
+    
+    // Patterns that indicate user wants to CREATE a plan (not just discuss)
+    const createPlanPatterns = [
+      'create a training plan',
+      'create a plan',
+      'make me a plan',
+      'make a training plan',
+      'build a plan',
+      'generate a plan',
+      'help me create a plan',
+      'i want a training plan',
+      'i need a training plan',
+      'can you create',
+      'could you create',
+      'please create',
+      'new training plan',
+      'start a plan',
+      'design a plan',
+      'prepare a plan',
+      'trainingsplan erstellen',
+      'erstelle einen plan',
+      'erstelle mir einen',
+    ];
+    
+    return createPlanPatterns.some(pattern => lowerMessage.includes(pattern));
   };
 
   // Fetch user context with caching
@@ -480,6 +526,26 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
 
     const userMessage = inputValue.trim();
     setInputValue('');
+    
+    // Check if user wants to create a training plan and we're not already in the sequence
+    if (wantsTrainingPlan(userMessage) && !activeSequenceStepId) {
+      console.log('🎯 Detected training plan creation intent, activating sequence...');
+      
+      // Activate the training plan sequence (will use structured prompts from now on)
+      const firstStep = getDefaultTrainingPlanStep();
+      setActiveSequenceStepId(firstStep.id);
+      
+      // Update chat title to reflect it's now a training plan chat
+      if (currentChatId && currentChatTitle === 'New conversation') {
+        const newTitle = generateChatTitle(userMessage) || 'Training Plan';
+        setCurrentChatTitle(newTitle);
+        await touchChatSession(currentChatId, newTitle);
+        await refreshSessions();
+      }
+      
+      // Continue with normal message flow but with sequence active
+      // The LLM will now use the intake-start prompt
+    }
     
     const chatId = currentChatId || await startNewChat('New conversation');
     if (!chatId) return;
@@ -699,6 +765,11 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
         endDate: endDate,
         planName: detectedPlan.meta?.plan_name || 'Training Plan'
       };
+      
+      // If we're updating an existing plan, include its ID
+      if (discussingPlanId) {
+        planToSave.id = discussingPlanId;
+      }
 
       const result = await saveTrainingPlan(planToSave);
       
@@ -707,17 +778,21 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
         return;
       }
 
-      // Show success message
+      // Show success message (different for new vs update)
+      const isUpdate = !!discussingPlanId;
       const successMessage = {
         role: 'assistant',
-        content: `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been saved! You can view it in the Training Plan page.`,
+        content: isUpdate 
+          ? `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been **updated**! Your changes have been saved.`
+          : `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been saved! You can view it in the Training Plan page.`,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [...prev, successMessage]);
       await saveChatMessage('assistant', successMessage.content, currentChatId, currentChatTitle);
       
-      // Clear detected plan
+      // Clear detected plan and discussion ID
       setDetectedPlan(null);
+      setDiscussingPlanId(null);
     } catch (error) {
       console.error('Error saving plan:', error);
       alert(`Failed to save plan: ${error.message}`);
@@ -899,13 +974,13 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
         </div>
       )}
 
-      {/* Save Plan Button - Above Input */}
+      {/* Save/Update Plan Button - Above Input */}
       {!showHistoryView && detectedPlan && (
         <div className="px-4 pt-2 pb-2 border-t border-lavender-blush-200 dark:border-lavender-blush-800">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="flex-1">
               <p className="text-sm font-semibold text-lavender-blush-900 dark:text-lavender-blush-50 m-0 mb-1">
-                ✅ Training Plan Generated
+                {discussingPlanId ? '📝 Updated Plan Ready' : '✅ Training Plan Generated'}
               </p>
               <p className="text-xs text-lavender-blush-600 dark:text-lavender-blush-400 m-0">
                 {detectedPlan.meta?.plan_name || 'Training Plan'} • {getPlanTypeLabel(detectedPlan.meta?.plan_type)} • {detectedPlan.meta?.total_duration_weeks || 0} weeks
@@ -916,7 +991,7 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
               disabled={savingPlan}
               className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {savingPlan ? 'Saving...' : 'Save Plan'}
+              {savingPlan ? (discussingPlanId ? 'Updating...' : 'Saving...') : (discussingPlanId ? 'Update Plan' : 'Save Plan')}
             </button>
           </div>
         </div>

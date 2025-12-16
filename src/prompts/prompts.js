@@ -385,13 +385,15 @@ GENERAL RULES FOR PLAN CREATION:
 
 4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
-IMPORTANT DATE CALCULATION:
-- The current date will be provided in the conversation context as "Today's date: YYYY-MM-DD"
+IMPORTANT DATE CALCULATION - READ CAREFULLY:
+- Look for "CURRENT DATE" in the conversation context - it shows today's date and tomorrow's date
+- The context includes "Tomorrow's date (default plan start): YYYY-MM-DD" - use this as the default start
+- ALWAYS use the YEAR from the context (do NOT assume 2024 - check the actual year!)
 - Use the athlete's specified start date if they provided one during intake
-- If NO start date was specified, DEFAULT to tomorrow (current date + 1 day)
+- If NO start date was specified, use the "Tomorrow's date" from the context
 - Calculate the plan duration to END at the athlete's goal date (e.g., race day)
 - The start_date in the JSON must be in YYYY-MM-DD format
-- If the athlete says "X months from now" or "next Monday", calculate the actual date
+- Double-check your dates make sense: start_date should be AFTER today's date
 
 OUTPUT FORMAT:
 

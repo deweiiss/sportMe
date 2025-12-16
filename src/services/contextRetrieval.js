@@ -165,8 +165,16 @@ export const getUserContext = async () => {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
     const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
-    contextParts.push('=== CURRENT DATE ===');
-    contextParts.push(`Today is: ${dayName}, ${dateStr}`);
+    const fullDate = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const tomorrowDate = new Date(today);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+    
+    contextParts.push('=== CURRENT DATE (IMPORTANT!) ===');
+    contextParts.push(`Today is: ${fullDate}`);
+    contextParts.push(`Today's date (YYYY-MM-DD): ${dateStr}`);
+    contextParts.push(`Tomorrow's date (default plan start): ${tomorrowStr}`);
+    contextParts.push('IMPORTANT: Use these exact dates for any date calculations. The year is ' + today.getFullYear() + '.');
     contextParts.push('');
     
     // Fetch athlete profile

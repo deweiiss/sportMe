@@ -534,7 +534,12 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
     const userMessage = inputValue.trim();
     setInputValue('');
     
+    // Get or create chat FIRST (before checking for training plan intent)
+    const chatId = currentChatId || await startNewChat('New conversation');
+    if (!chatId) return;
+    
     // Check if user wants to create a training plan and we're not already in the sequence
+    // This must happen AFTER chat creation to avoid race condition where startNewChat clears the sequence
     if (wantsTrainingPlan(userMessage) && !activeSequenceStepId) {
       console.log('🎯 Detected training plan creation intent, activating sequence...');
       
@@ -543,19 +548,16 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       setActiveSequenceStepId(firstStep.id);
       
       // Update chat title to reflect it's now a training plan chat
-      if (currentChatId && currentChatTitle === 'New conversation') {
+      if (currentChatTitle === 'New conversation') {
         const newTitle = generateChatTitle(userMessage) || 'Training Plan';
         setCurrentChatTitle(newTitle);
-        await touchChatSession(currentChatId, newTitle);
+        await touchChatSession(chatId, newTitle);
         await refreshSessions();
       }
       
       // Continue with normal message flow but with sequence active
       // The LLM will now use the intake-start prompt
     }
-    
-    const chatId = currentChatId || await startNewChat('New conversation');
-    if (!chatId) return;
 
       const newUserMessage = {
         role: 'user',
@@ -636,10 +638,21 @@ Apply the user's requested changes to this JSON and output the complete updated 
       }
 
       const currentModel = selectedModel?.toLowerCase()?.trim();
-      const sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
+      let sequenceStep = activeSequenceStepId ? getTrainingPlanStep(activeSequenceStepId) : null;
       
       console.log('📋 Active sequence step:', activeSequenceStepId);
       console.log('📋 Sequence step object:', sequenceStep?.id, '→', sequenceStep?.nextId);
+      
+      // Check if user is confirming the athlete summary (saying YES/yes/correct/etc.)
+      // If so, advance to generate-plan step BEFORE the API call
+      if (sequenceStep?.id === 'athlete-summary' && sequenceStep?.nextId === 'generate-plan') {
+        const confirmationPatterns = /^(yes|ja|correct|looks good|that's right|perfect|ok|okay|yep|yeah|confirm|bestätigen|stimmt|richtig|passt)/i;
+        if (confirmationPatterns.test(userMessage.trim())) {
+          console.log('✅ User confirmed summary - advancing to generate-plan step');
+          sequenceStep = getTrainingPlanStep('generate-plan');
+          setActiveSequenceStepId('generate-plan');
+        }
+      }
       
       let assistantResponse;
       console.log('✅ Calling Gemini API (with model fallback chain)');

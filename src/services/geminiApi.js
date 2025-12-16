@@ -23,10 +23,12 @@ const MAX_RETRY_DELAY_MS = 15000;    // Max 15 seconds between retries
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Generate a summary of plan modifications for the user
+ * Generate a summary of a training plan for the user
  */
-const generatePlanModificationSummary = (plan) => {
-  if (!plan) return 'I\'ve updated the plan. Would you like to save these changes?';
+const generatePlanSummary = (plan, isModification = false) => {
+  if (!plan) return isModification 
+    ? 'I\'ve updated the plan. Would you like to save these changes?'
+    : 'Your training plan is ready! Would you like to save it?';
   
   const meta = plan.meta || {};
   const schedule = plan.schedule || [];
@@ -48,16 +50,34 @@ const generatePlanModificationSummary = (plan) => {
     });
   }
   
-  let summary = '✅ **I\'ve updated your training plan!**\n\n';
-  summary += '**Updated plan configuration:**\n';
-  summary += `- **Plan name:** ${meta.plan_name || 'Training Plan'}\n`;
+  // Format dates
+  const startDate = meta.start_date ? new Date(meta.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set';
+  
+  let summary = isModification 
+    ? '✅ **I\'ve updated your training plan!**\n\n'
+    : '✅ **Your training plan is ready!**\n\n';
+  
+  summary += '**Plan overview:**\n';
+  summary += `- **Name:** ${meta.plan_name || 'Training Plan'}\n`;
+  summary += `- **Type:** ${meta.plan_type?.replace('_', ' ') || 'Training'}\n`;
   summary += `- **Duration:** ${meta.total_duration_weeks || schedule.length} weeks\n`;
+  summary += `- **Start date:** ${startDate}\n`;
   
   if (runningDays.length > 0) {
-    summary += `- **Running days:** ${runningDays.join(', ')}\n`;
+    summary += `- **Training days:** ${runningDays.join(', ')}\n`;
   }
   
-  summary += '\nWould you like to save these changes, or should I make further adjustments?';
+  // Add phases if available
+  if (plan.periodization_overview?.phases?.length > 0) {
+    summary += '\n**Training phases:**\n';
+    plan.periodization_overview.phases.forEach(phase => {
+      summary += `- ${phase.phase_name}: ${phase.duration_weeks} weeks\n`;
+    });
+  }
+  
+  summary += isModification 
+    ? '\nWould you like to **save** these changes, or should I make further adjustments?'
+    : '\nWould you like to **save** this plan, or should I make any adjustments first?';
   
   return summary;
 };
@@ -361,9 +381,7 @@ You have direct access to this data. Use it to personalize your coaching.` }]
               
               // Generate appropriate message based on whether this is a new plan or modification
               const isModification = sequenceStep?.id === 'modify-plan';
-              const displayText = isModification 
-                ? generatePlanModificationSummary(structuredPlan)
-                : 'Would you like to save this training plan, or would you like me to make any adjustments to it?';
+              const displayText = generatePlanSummary(structuredPlan, isModification);
               
               return {
                 text: displayText,
@@ -554,9 +572,7 @@ You have direct access to this data. Use it to personalize your coaching.` }]
           
           // Generate appropriate message based on whether this is a new plan or modification
           const isModification = sequenceStep?.id === 'modify-plan';
-          const displayText = isModification 
-            ? generatePlanModificationSummary(structuredPlan)
-            : 'Would you like to save this training plan, or would you like me to make any adjustments to it?';
+          const displayText = generatePlanSummary(structuredPlan, isModification);
           
           // If we have an onChunk callback, send the display text as a final chunk
           if (onChunk) {

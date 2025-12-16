@@ -57,6 +57,17 @@ const calculateActivityStats = (activities) => {
   const totalDistance = runningActivities.reduce((sum, a) => sum + (a.distance || 0), 0);
   const avgDistance = totalDistance / totalRuns / 1000; // in km
   
+  // Calculate weekly averages
+  const dates = runningActivities.map(a => new Date(a.start_date_local || a.start_date));
+  const maxDate = new Date(Math.max(...dates));
+  const minDate = new Date(Math.min(...dates));
+  // Ensure we span at least 1 week to avoid inflated stats for single day
+  const daySpan = Math.max(7, (maxDate - minDate) / (1000 * 60 * 60 * 24)); 
+  const weeks = daySpan / 7;
+  
+  const avgWeeklyDistance = ((totalDistance / 1000) / weeks).toFixed(1);
+  const avgRunsPerWeek = (totalRuns / weeks).toFixed(1);
+
   const avgPaceActivities = runningActivities.filter(a => a.average_speed && a.average_speed > 0);
   let avgPace = null;
   if (avgPaceActivities.length > 0) {
@@ -88,6 +99,8 @@ const calculateActivityStats = (activities) => {
   return {
     totalRuns,
     avgDistance: avgDistance.toFixed(1),
+    avgWeeklyDistance,
+    avgRunsPerWeek,
     avgPace,
     longestDistance,
     frequency
@@ -246,36 +259,33 @@ export const getUserContext = async () => {
       }
     }
     
-    // Get recent activities (last 10)
-    const recentActivitiesResult = await getActivitiesFromSupabase(null, 10, 0);
+    // Get recent activities (last 50 to ensure good stats coverage)
+    const recentActivitiesResult = await getActivitiesFromSupabase(null, 50, 0);
     if (recentActivitiesResult.data) {
       // Merge with plan activities, avoiding duplicates
       const existingIds = new Set(activitiesToInclude.map(a => a.id || a.strava_id));
       const newActivities = recentActivitiesResult.data.filter(a => !existingIds.has(a.id || a.strava_id));
       activitiesToInclude.push(...newActivities);
       
-      // Sort by date (most recent first) and limit to reasonable number
+      // Sort by date (most recent first)
       activitiesToInclude.sort((a, b) => {
         const dateA = new Date(a.start_date_local || a.start_date);
         const dateB = new Date(b.start_date_local || b.start_date);
         return dateB - dateA;
       });
       
-      // If we have plan activities + recent, keep plan activities + top 10 recent
-      if (activitiesToInclude.length > 20) {
+      // If we have many activities, keep plan activities + top 50 recent for stats
+      if (activitiesToInclude.length > 50) {
         const planActivityIds = activePlan ? 
-          new Set(activitiesToInclude.slice(0, activitiesToInclude.length - 10).map(a => a.id || a.strava_id)) :
+          new Set(activitiesToInclude.slice(0, activitiesToInclude.length - 50).map(a => a.id || a.strava_id)) :
           new Set();
         
         const planActivities = activitiesToInclude.filter(a => planActivityIds.has(a.id || a.strava_id));
         const recentOnly = activitiesToInclude
           .filter(a => !planActivityIds.has(a.id || a.strava_id))
-          .slice(0, 10);
+          .slice(0, 50);
         
         activitiesToInclude = [...planActivities, ...recentOnly];
-      } else {
-        // Limit to 20 total if we have many plan activities
-        activitiesToInclude = activitiesToInclude.slice(0, 20);
       }
     }
     
@@ -284,7 +294,10 @@ export const getUserContext = async () => {
       
       const stats = calculateActivityStats(activitiesToInclude);
       if (stats) {
-        contextParts.push(`Summary: ${stats.totalRuns} runs, Average: ${stats.avgDistance} km, Average Pace: ${stats.avgPace ? stats.avgPace + ' min/km' : 'N/A'}, Longest: ${stats.longestDistance ? stats.longestDistance + ' km' : 'N/A'}, ${stats.frequency}`);
+        contextParts.push(`Summary: ${stats.totalRuns} runs analyzed`);
+        contextParts.push(`Weekly Averages: ${stats.avgWeeklyDistance} km/week, ${stats.avgRunsPerWeek} runs/week`);
+        contextParts.push(`Metrics: Avg Run: ${stats.avgDistance} km, Avg Pace: ${stats.avgPace ? stats.avgPace + ' min/km' : 'N/A'}, Longest: ${stats.longestDistance ? stats.longestDistance + ' km' : 'N/A'}`);
+        contextParts.push(`Recent Frequency: ${stats.frequency}`);
         contextParts.push('');
       }
       

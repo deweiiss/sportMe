@@ -233,21 +233,27 @@ export const trainingPlanSequence = [
     systemPrompt: BASE_COACH_PROMPT,
     userPrompt: `Start athlete intake.
 
-First, CHECK if User Context (Strava history, profile) is provided.
-IF context is available and contains answers to the critical questions below, DO NOT ask them again. Instead, summarize what you know and ask for confirmation.
-IF NO context is available, proceed with asking the questions.
+IMPORTANT: Check the User Context provided earlier in the conversation.
 
-Ask the user ONLY for missing critical information required to design a safe and effective running training plan.
+The User Context contains Strava data with these key stats:
+- "Weekly Averages: X km/week, X runs/week" → This tells you their current weekly mileage and running frequency
+- "Longest: X km" → This is their longest recent run
+- "Recent Frequency: X runs in last 30 days" → This confirms their current training consistency
+- Individual activity listings show their actual training history
 
-Group questions into:
+DO NOT ask questions that the Strava data already answers:
+- Do NOT ask "how many km per week" (use Weekly Averages)
+- Do NOT ask "how many days/times per week do you run" (use runs/week from Weekly Averages)
+- Do NOT ask "what is your longest run" (use Longest from Metrics)
+- Do NOT ask about recent training load if activities are listed
 
-1. Goal & timeline
+Instead, START by acknowledging what you already know from their Strava data, then ask ONLY for information NOT available in the context:
 
-2. Current fitness & recent training load
+1. Goal & timeline (target race/event, specific goal, target date)
 
-3. Injury history & health constraints
+2. Injury history & health constraints (past injuries, current pain, medical limitations)
 
-4. Available training time & weekly structure
+3. Schedule preferences (which days work best, time of day, any constraints)
 
 Rules:
 
@@ -257,32 +263,35 @@ Rules:
 
 - Use bullet points
 
-- Avoid explanations
-
-- If numeric values are needed, request units explicitly`,
+- Avoid explanations`,
     nextId: 'validation-gap-check'
   },
   {
     id: 'validation-gap-check',
     title: 'Daten-Validierung & Gap-Check',
     systemPrompt: BASE_COACH_PROMPT,
-    userPrompt: `Analyze the provided athlete answers.
+    userPrompt: `Review the athlete's information and check if anything is missing or risky.
 
-Tasks:
+INTERNALLY assess:
+- Missing or vague information
+- Injury/overuse risks based on their goal vs current fitness
+- Whether you have enough info to create a plan
 
-- Identify missing, vague, or contradictory information
+HOW TO RESPOND (user-facing, friendly tone):
 
-- Flag any injury or overuse risk
+IF there are concerns or risks:
+- Explain the concern in a supportive, coach-like way (e.g., "I notice your goal is ambitious given your current training - let's make sure we build up safely")
+- Ask follow-up questions naturally, 1-2 at a time
+- Do NOT use labels like "Risk Level:" or "Status:" - speak naturally
 
-- Assess whether the input is sufficient to create a training plan
+IF info is missing:
+- Ask for the missing info conversationally
+- Do NOT list "missing items" formally
 
-Output:
+IF everything looks good:
+- Simply confirm you have what you need and move forward
 
-- List missing or unclear items as follow-up questions (if any)
-
-- State clearly whether plan generation can proceed (YES / NO)
-
-- If NO, ask ONLY the necessary clarification questions`,
+NEVER output internal labels like "Plan Generation Status", "Flagged Risk:", etc. Communicate like a real coach would.`,
     nextId: 'athlete-summary'
   },
   {

@@ -14,6 +14,36 @@ import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prom
 import { getTrainingPlans, saveTrainingPlan } from '../services/supabase';
 import { extractTrainingPlanJSON } from '../utils/jsonExtraction';
 
+/**
+ * Generate a brief summary message for a training plan
+ */
+const generatePlanSummary = (planData) => {
+  if (!planData) return 'Training plan generated. Would you like to save it?';
+  
+  const meta = planData.meta || {};
+  const weeks = meta.total_duration_weeks || planData.schedule?.length || '?';
+  const planName = meta.plan_name || 'Your training plan';
+  const planType = meta.plan_type?.replace('_', ' ').toLowerCase() || 'training';
+  const startDate = meta.start_date ? new Date(meta.start_date).toLocaleDateString() : null;
+  
+  let summary = `✅ **${planName}** is ready!\n\n`;
+  summary += `📋 **Overview:**\n`;
+  summary += `- Duration: ${weeks} weeks\n`;
+  summary += `- Type: ${planType.charAt(0).toUpperCase() + planType.slice(1)} plan\n`;
+  if (startDate) summary += `- Start date: ${startDate}\n`;
+  
+  if (planData.periodization_overview?.phases?.length > 0) {
+    summary += `\n📈 **Phases:**\n`;
+    planData.periodization_overview.phases.forEach(phase => {
+      summary += `- ${phase.phase_name}: ${phase.duration_weeks} weeks\n`;
+    });
+  }
+  
+  summary += `\nWould you like to **save** this plan, or should I make any adjustments?`;
+  
+  return summary;
+};
+
 const ChatPanel = ({ width = 320 }) => {
   const [messages, setMessages] = useState([]);
   const [chatSessions, setChatSessions] = useState([]);
@@ -224,6 +254,8 @@ const ChatPanel = ({ width = 320 }) => {
         const extractedPlan = extractTrainingPlanJSON(assistantResponse);
         if (extractedPlan) {
           planDataFromResponse = extractedPlan;
+          // Replace raw JSON with a user-friendly summary
+          messageContent = generatePlanSummary(extractedPlan);
         }
       }
       
@@ -423,6 +455,8 @@ const ChatPanel = ({ width = 320 }) => {
         const extractedPlan = extractTrainingPlanJSON(assistantResponse);
         if (extractedPlan) {
           planDataFromResponse = extractedPlan;
+          // Replace raw JSON with a user-friendly summary
+          messageContent = generatePlanSummary(extractedPlan);
         }
       }
 

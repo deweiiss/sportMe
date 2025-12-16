@@ -190,15 +190,20 @@ export const sendChatMessage = async (
       );
       
       if (!hasContext) {
-        // Add context as a user message
+        // Add context as a user message - make clear this is REAL synced data from their Strava account
         contents.push({
           role: 'user',
-          parts: [{ text: `=== USER CONTEXT ===\n${context}\n\nUse this information about the athlete to provide personalized coaching and training plans.` }]
+          parts: [{ text: `=== SYNCED STRAVA DATA ===
+The following is REAL data synced from this athlete's Strava account to this app. This is NOT hypothetical - these are their actual workouts and stats:
+
+${context}
+
+You have direct access to this data. Use it to personalize your coaching.` }]
         });
-        // Add a model response to acknowledge context
+        // Add a model response to acknowledge this is real synced data
         contents.push({
           role: 'model',
-          parts: [{ text: 'I understand. I have the athlete context and will use it to provide personalized coaching.' }]
+          parts: [{ text: 'I can see your synced Strava data above. I will use your actual training history, weekly averages, and workout details to personalize my recommendations. I won\'t ask you about information that\'s already visible in your Strava data.' }]
         });
       }
     }
@@ -361,13 +366,20 @@ export const sendChatMessageStreaming = async (
       );
       
       if (!hasContext) {
+        // Add context as a user message - make clear this is REAL synced data from their Strava account
         contents.push({
           role: 'user',
-          parts: [{ text: `=== USER CONTEXT ===\n${context}\n\nUse this information about the athlete to provide personalized coaching and training plans.` }]
+          parts: [{ text: `=== SYNCED STRAVA DATA ===
+The following is REAL data synced from this athlete's Strava account to this app. This is NOT hypothetical - these are their actual workouts and stats:
+
+${context}
+
+You have direct access to this data. Use it to personalize your coaching.` }]
         });
+        // Add a model response to acknowledge this is real synced data
         contents.push({
           role: 'model',
-          parts: [{ text: 'I understand. I have the athlete context and will use it to provide personalized coaching.' }]
+          parts: [{ text: 'I can see your synced Strava data above. I will use your actual training history, weekly averages, and workout details to personalize my recommendations. I won\'t ask you about information that\'s already visible in your Strava data.' }]
         });
       }
     }

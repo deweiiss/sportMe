@@ -233,88 +233,97 @@ export const trainingPlanSequence = [
     systemPrompt: BASE_COACH_PROMPT,
     userPrompt: `Start athlete intake.
 
-IMPORTANT: Check the User Context provided earlier in the conversation.
+CRITICAL: The user's Strava data has been SYNCED to this app and is PROVIDED TO YOU earlier in this conversation (labeled "SYNCED STRAVA DATA"). This is REAL data from their actual Strava account - you DO have access to it. NEVER say you cannot access their Strava data.
 
-The User Context contains Strava data with these key stats:
-- "Weekly Averages: X km/week, X runs/week" → This tells you their current weekly mileage and running frequency
-- "Longest: X km" → This is their longest recent run
-- "Recent Frequency: X runs in last 30 days" → This confirms their current training consistency
-- Individual activity listings show their actual training history
+Look for these stats in the synced data:
+- "Weekly Averages: X km/week, X runs/week" = their current weekly mileage and frequency
+- "Longest: X km" = their longest recent run
+- "Recent Frequency: X runs in last 30 days" = their training consistency
+- Individual activity listings = their actual training history with dates, distances, and paces
 
-DO NOT ask questions that the Strava data already answers:
-- Do NOT ask "how many km per week" (use Weekly Averages)
-- Do NOT ask "how many days/times per week do you run" (use runs/week from Weekly Averages)
-- Do NOT ask "what is your longest run" (use Longest from Metrics)
-- Do NOT ask about recent training load if activities are listed
+DO NOT ASK for information you can already see:
+- Weekly kilometers → use "Weekly Averages" from their Strava data
+- How often they run → use "runs/week" from their Strava data  
+- Longest run → use "Longest" from their Strava data
+- Recent training → use the activity listings
 
-Instead, START by acknowledging what you already know from their Strava data, then ask ONLY for information NOT available in the context:
+START your response by stating what you can see from their Strava data (e.g., "I can see from your Strava that you're averaging X km/week...").
 
-1. Goal & timeline (target race/event, specific goal, target date)
+Then ask ONLY about things NOT in their Strava data:
 
-2. Injury history & health constraints (past injuries, current pain, medical limitations)
+1. Goal & timeline (what event/goal are you training for? when?)
 
-3. Schedule preferences (which days work best, time of day, any constraints)
+2. Injury history & health constraints (any past injuries or medical limitations?)
+
+3. Schedule preferences (which days work best? any time constraints?)
 
 Rules:
 
-- Ask ONLY 1-2 questions at a time. Wait for the user's answer before proceeding.
-
-- Cover all critical topics iteratively.
+- Ask ONLY 1-2 questions at a time
 
 - Use bullet points
 
-- Avoid explanations`,
+- Be conversational, not clinical`,
     nextId: 'validation-gap-check'
   },
   {
     id: 'validation-gap-check',
     title: 'Daten-Validierung & Gap-Check',
     systemPrompt: BASE_COACH_PROMPT,
-    userPrompt: `Review the athlete's information and check if anything is missing or risky.
+    userPrompt: `Review ALL available information: the SYNCED STRAVA DATA + the user's answers in this conversation.
 
-INTERNALLY assess:
-- Missing or vague information
-- Injury/overuse risks based on their goal vs current fitness
-- Whether you have enough info to create a plan
+REMEMBER: You already have from Strava:
+- Weekly volume (km/week) from "Weekly Averages"
+- Run frequency (runs/week) from "Weekly Averages"
+- Longest run from "Metrics"
+- Average pace from "Metrics"
 
-HOW TO RESPOND (user-facing, friendly tone):
+Check what's STILL missing that Strava doesn't provide:
+- Easy/conversational pace (different from average pace)
+- Weight training details (Strava doesn't track this well)
+- Specific race goal time (if competition plan)
 
-IF there are concerns or risks:
-- Explain the concern in a supportive, coach-like way (e.g., "I notice your goal is ambitious given your current training - let's make sure we build up safely")
-- Ask follow-up questions naturally, 1-2 at a time
-- Do NOT use labels like "Risk Level:" or "Status:" - speak naturally
+IF anything critical is still missing:
+- Ask for it conversationally (1-2 questions max)
+- Do NOT proceed to summary until you have enough info
 
-IF info is missing:
-- Ask for the missing info conversationally
-- Do NOT list "missing items" formally
+IF there are injury/overuse risks:
+- Mention the concern supportively (e.g., "Your goal is ambitious - let's build up carefully")
 
-IF everything looks good:
-- Simply confirm you have what you need and move forward
+IF you have enough information:
+- Confirm you're ready to summarize
 
-NEVER output internal labels like "Plan Generation Status", "Flagged Risk:", etc. Communicate like a real coach would.`,
+NEVER use labels like "Risk Level:", "Status:", etc. Speak like a real coach.`,
     nextId: 'athlete-summary'
   },
   {
     id: 'athlete-summary',
     title: 'Athlete Summary & Assumptions',
     systemPrompt: BASE_COACH_PROMPT,
-    userPrompt: `Summarize the athlete profile for validation.
+    userPrompt: `Create a summary using BOTH the SYNCED STRAVA DATA and the user's conversation answers.
 
-Include:
+USE STRAVA DATA FOR (do NOT say "unknown"):
+- Weekly running volume → use "Weekly Averages: X km/week" from Strava
+- Running frequency → use "X runs/week" from Strava
+- Longest recent run → use "Longest: X km" from Strava
+- Average pace → use "Avg Pace: X min/km" from Strava
+- Recent activity → use "Recent Frequency: X runs in last 30 days"
 
-- Goal and timeframe
+USE USER'S ANSWERS FOR:
+- Goal and target date
+- Injury history and health constraints
+- Schedule preferences
+- Easy/conversational pace (if they provided it)
+- Weight training details (if they provided it)
 
-- Assumed current performance level
+FORMAT:
+**Goal:** [from conversation]
+**Current fitness (from Strava):** X km/week, X runs/week, longest run X km, avg pace X min/km
+**Constraints/Injuries:** [from conversation, or "None mentioned"]
+**Schedule:** [from conversation]
+**Assumptions:** [only list things NOT in Strava AND not answered by user]
 
-- Weekly training availability
-
-- Key constraints or risks
-
-- Explicit assumptions made due to missing data
-
-Ask the user to confirm:
-
-"Is this summary correct? (YES / ADJUST)"
+End with: "Does this look correct? (YES / ADJUST)"
 
 Do NOT generate a training plan yet.`,
     nextId: 'generate-plan'

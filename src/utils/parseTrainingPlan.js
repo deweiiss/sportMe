@@ -48,30 +48,48 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
         const dayString = dayData;
         // Format: "day_name|day_index|is_rest_day|is_completed|activity_category|activity_title|total_duration_min|workout_segments"
         // workout_segments format: "SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone||SEGMENT_TYPE:..."
-        const parts = dayString.split('|');
-        
-        if (parts.length < 7) {
-          // Invalid format, return minimal structure
-          console.warn('Invalid day format, using defaults:', dayString);
+
+        // CRITICAL: We need to split only on the first 7 pipes, not ALL pipes
+        // Because segments use || as separators, split('|') would break them apart
+        // Extract the first 7 fields manually
+        const firstPipeIndex = dayString.indexOf('|');
+        const secondPipeIndex = dayString.indexOf('|', firstPipeIndex + 1);
+        const thirdPipeIndex = dayString.indexOf('|', secondPipeIndex + 1);
+        const fourthPipeIndex = dayString.indexOf('|', thirdPipeIndex + 1);
+        const fifthPipeIndex = dayString.indexOf('|', fourthPipeIndex + 1);
+        const sixthPipeIndex = dayString.indexOf('|', fifthPipeIndex + 1);
+        const seventhPipeIndex = dayString.indexOf('|', sixthPipeIndex + 1);
+
+        if (seventhPipeIndex === -1) {
+          // Invalid format - not enough fields
+          console.warn('Invalid day format (not enough pipes), using defaults:', dayString);
+          const parts = dayString.split('|');
           return {
             day_name: parts[0] || 'Monday',
-            day_index: parseInt(parts[1]) || 1,
+            day_index: parseInt(parts[1] || '0'),
             is_rest_day: parts[2] === 'true',
             is_completed: parts[3] === 'true',
             activity_category: parts[4] || 'REST',
             activity_title: parts[5] || 'Rest day',
-            total_estimated_duration_min: parseInt(parts[6]) || 0,
+            total_estimated_duration_min: parseInt(parts[6] || '0'),
             workout_structure: []
           };
         }
 
-        // Parse workout segments if present
-        const rawSegments = parts[7] && parts[7].trim();
-        console.log('📋 Raw segments for', parts[0], ':', rawSegments ? rawSegments.substring(0, 150) : '(empty)');
+        // Extract fields manually
+        const day_name = dayString.substring(0, firstPipeIndex);
+        const day_index = dayString.substring(firstPipeIndex + 1, secondPipeIndex);
+        const is_rest_day = dayString.substring(secondPipeIndex + 1, thirdPipeIndex);
+        const is_completed = dayString.substring(thirdPipeIndex + 1, fourthPipeIndex);
+        const activity_category = dayString.substring(fourthPipeIndex + 1, fifthPipeIndex);
+        const activity_title = dayString.substring(fifthPipeIndex + 1, sixthPipeIndex);
+        const total_duration_min = dayString.substring(sixthPipeIndex + 1, seventhPipeIndex);
+        const rawSegments = dayString.substring(seventhPipeIndex + 1).trim();
+        console.log('📋 Raw segments for', day_name, ':', rawSegments ? rawSegments.substring(0, 150) : '(empty)');
 
-        // Check if || separator is present (expected format)
-        if (rawSegments && !rawSegments.includes('||')) {
-          console.warn('⚠️ Segments missing || separator! Raw:', rawSegments.substring(0, 200));
+        // Check if || separator is present for multi-segment workouts (expected format)
+        if (rawSegments && rawSegments.length > 0 && !rawSegments.includes('||') && activity_category === 'RUN') {
+          console.warn('⚠️ RUN workout has segments but missing || separator! Raw:', rawSegments.substring(0, 200));
           console.warn('   This suggests Gemini is not following the schema format.');
         }
 
@@ -117,17 +135,17 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
               return segment;
             }).filter(segment => segment !== null)
           : [];
-        
-        console.log('📋 Total segments for', parts[0], ':', workoutSegments.length);
+
+        console.log('📋 Total segments for', day_name, ':', workoutSegments.length);
 
         return {
-          day_name: parts[0],
-          day_index: parseInt(parts[1]) || 1,
-          is_rest_day: parts[2] === 'true',
-          is_completed: parts[3] === 'true',
-          activity_category: parts[4],
-          activity_title: parts[5],
-          total_estimated_duration_min: parseInt(parts[6]) || 0,
+          day_name: day_name,
+          day_index: parseInt(day_index || '0'),
+          is_rest_day: is_rest_day === 'true',
+          is_completed: is_completed === 'true',
+          activity_category: activity_category,
+          activity_title: activity_title,
+          total_estimated_duration_min: parseInt(total_duration_min || '0'),
           workout_structure: workoutSegments
         };
       })

@@ -22,28 +22,102 @@ import { isModificationRequest } from '../utils/planModificationDetection';
  */
 const generateChatTitle = (message) => {
   if (!message || typeof message !== 'string') return 'New conversation';
-  
+
   // Clean up the message
   let title = message.trim();
-  
+
   // Remove markdown formatting
   title = title.replace(/[*_#`]/g, '');
-  
+
   // Take first sentence or first 50 chars
   const firstSentence = title.split(/[.!?]/)[0];
   if (firstSentence && firstSentence.length > 5) {
     title = firstSentence;
   }
-  
+
   // Truncate if too long
   if (title.length > 50) {
     title = title.substring(0, 47) + '...';
   }
-  
+
   // Capitalize first letter
   title = title.charAt(0).toUpperCase() + title.slice(1);
-  
+
   return title || 'New conversation';
+};
+
+/**
+ * Generate a distinctive chat title from training plan data
+ * Creates titles like "Half Marathon - May 24" or "10K Sub-45min Plan"
+ */
+const generateTrainingPlanChatTitle = (planData) => {
+  if (!planData || !planData.meta) return 'Training Plan';
+
+  const meta = planData.meta;
+  const parts = [];
+
+  // Extract race/goal type from macrocycle_goal or plan_name
+  const goal = planData.periodization_overview?.macrocycle_goal || meta.plan_name || '';
+
+  // Try to extract race distance (5K, 10K, Half Marathon, Marathon, etc.)
+  const distanceMatch = goal.match(/(marathon|half[\s-]?marathon|5k|10k|15k|20k|ultra)/i);
+  if (distanceMatch) {
+    let distance = distanceMatch[0];
+    // Normalize distance formatting
+    if (distance.toLowerCase().includes('half')) {
+      distance = 'Half Marathon';
+    } else if (distance.toLowerCase() === 'marathon') {
+      distance = 'Marathon';
+    } else {
+      distance = distance.toUpperCase();
+    }
+    parts.push(distance);
+  }
+
+  // Try to extract time goal (Sub-2h, Sub-45min, etc.)
+  const timeMatch = goal.match(/sub[- ]?(\d+)[\s:]?(\d+)?\s?(h|hr|hour|min|minute)?/i);
+  if (timeMatch) {
+    const value1 = timeMatch[1];
+    const value2 = timeMatch[2];
+    const unit = timeMatch[3];
+
+    if (unit && (unit.toLowerCase().startsWith('h') || parseInt(value1) <= 5)) {
+      // Likely hours format: "Sub-2h" or "Sub-1:45"
+      if (value2) {
+        parts.push(`Sub-${value1}:${value2}h`);
+      } else {
+        parts.push(`Sub-${value1}h`);
+      }
+    } else {
+      // Minutes format: "Sub-45min"
+      parts.push(`Sub-${value1}min`);
+    }
+  }
+
+  // Add goal date if available and no time goal
+  if (!timeMatch && meta.goal_date) {
+    try {
+      const goalDate = new Date(meta.goal_date);
+      const formattedDate = goalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      parts.push(formattedDate);
+    } catch (e) {
+      // Ignore date parsing errors
+    }
+  }
+
+  // If no specific details found, use plan type
+  if (parts.length === 0) {
+    const planType = meta.plan_type?.replace('_', ' ') || 'Training';
+    // Capitalize each word
+    const formatted = planType
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+    return `${formatted} Plan`;
+  }
+
+  // Join parts with " - " separator
+  return parts.join(' - ');
 };
 
 /**
@@ -897,18 +971,28 @@ Apply this change to the training plan and output the COMPLETE updated plan as J
         return;
       }
 
+      // Generate distinctive chat title from plan data
+      const newChatTitle = generateTrainingPlanChatTitle(detectedPlan);
+
+      // Update chat title if it's still generic or if this is a new plan
+      if (!discussingPlanId || currentChatTitle === 'New conversation' || currentChatTitle === 'Training Plan') {
+        setCurrentChatTitle(newChatTitle);
+        await touchChatSession(currentChatId, newChatTitle);
+        await refreshSessions();
+      }
+
       // Show success message (different for new vs update)
       const isUpdate = !!discussingPlanId;
       const successMessage = {
         role: 'assistant',
-        content: isUpdate 
+        content: isUpdate
           ? `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been **updated**! Your changes have been saved.\n\n💡 **Tip:** Refresh the Training Plan page to see your updated plan.`
           : `✅ Training plan "${detectedPlan.meta?.plan_name || 'Training Plan'}" has been saved! You can view it in the Training Plan page.`,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [...prev, successMessage]);
-      await saveChatMessage('assistant', successMessage.content, currentChatId, currentChatTitle);
-      
+      await saveChatMessage('assistant', successMessage.content, currentChatId, newChatTitle);
+
       // Clear detected plan and discussion state
       setDetectedPlan(null);
       setOriginalPlanForDiscussion(null);

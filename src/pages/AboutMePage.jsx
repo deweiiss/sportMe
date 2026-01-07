@@ -223,7 +223,12 @@ const AboutMePage = () => {
 
   // Calculate running experience from activities
   const calculateRunningExperience = () => {
-    if (activities.length === 0) {
+    // Filter for running activities only
+    const runningActivities = activities.filter(a =>
+      a.type?.toLowerCase().includes('run') || a.sport_type?.toLowerCase().includes('run')
+    );
+
+    if (runningActivities.length === 0) {
       return {
         frequency: 'No data available',
         bestPace: 'N/A',
@@ -235,7 +240,7 @@ const AboutMePage = () => {
     // Calculate frequency (runs per week on average)
     const now = new Date();
     const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    const recentActivities = activities.filter(activity => {
+    const recentActivities = runningActivities.filter(activity => {
       const activityDate = new Date(activity.start_date_local);
       return activityDate >= oneYearAgo;
     });
@@ -250,7 +255,7 @@ const AboutMePage = () => {
     }
 
     // Find best pace (fastest average speed)
-    const bestPaceActivity = activities.reduce((best, activity) => {
+    const bestPaceActivity = runningActivities.reduce((best, activity) => {
       if (!activity.average_speed || activity.average_speed === 0) return best;
       if (!best || activity.average_speed > best.average_speed) return activity;
       return best;
@@ -261,7 +266,7 @@ const AboutMePage = () => {
       : 'N/A';
 
     // Find longest run
-    const longestRunActivity = activities.reduce((longest, activity) => {
+    const longestRunActivity = runningActivities.reduce((longest, activity) => {
       if (!activity.distance) return longest;
       if (!longest || activity.distance > longest.distance) return activity;
       return longest;
@@ -272,7 +277,7 @@ const AboutMePage = () => {
       : 'N/A';
 
     // Check for past races (marathons, half marathons, etc.)
-    const raceActivities = activities.filter(activity => {
+    const raceActivities = runningActivities.filter(activity => {
       const distance = activity.distance || 0;
       // Consider activities over 20km as potential races
       return distance >= 20000;

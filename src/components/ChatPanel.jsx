@@ -15,6 +15,7 @@ import { getUserContext } from '../services/contextRetrieval';
 import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prompts';
 import { getTrainingPlans, saveTrainingPlan } from '../services/supabase';
 import { extractTrainingPlanJSON } from '../utils/jsonExtraction';
+import { isModificationRequest } from '../utils/planModificationDetection';
 
 /**
  * Generate a meaningful chat title from the first user message
@@ -611,42 +612,48 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       
       // If we're discussing an existing plan, add special context and instructions
       const planToDiscuss = originalPlanForDiscussion || detectedPlan;
-      let planModificationSystemPrompt = null;
-      
+      let planDiscussionSystemPrompt = null;
+
       if (discussingPlanId && planToDiscuss) {
         const planJSON = JSON.stringify(planToDiscuss, null, 2);
-        
-        // Use a custom system prompt for plan modification mode
-        planModificationSystemPrompt = `You are a running coach helping modify an existing training plan.
 
-CRITICAL INSTRUCTION FOR PLAN MODIFICATIONS:
+        // Create a system prompt that works for both questions AND modifications
+        planDiscussionSystemPrompt = `You are a running coach discussing a training plan with an athlete.
 
-When the user requests ANY changes to the plan (different days, adjusted workouts, changed intensity, etc.), you MUST:
+THE ATHLETE'S CURRENT TRAINING PLAN:
+\`\`\`json
+${planJSON}
+\`\`\`
 
-1. Write a brief 1-2 sentence acknowledgment
+INSTRUCTIONS:
+
+**For QUESTIONS about the plan:**
+- Answer the question clearly and specifically based on the plan data above
+- Reference specific weeks, days, or workouts when relevant
+- Be conversational and helpful
+- DO NOT modify the plan unless explicitly asked to change something
+
+**For MODIFICATION REQUESTS:**
+When the user explicitly requests changes (e.g., "change Monday to Tuesday", "make it easier", "add a rest day"), you MUST:
+
+1. Briefly acknowledge what you'll change (1-2 sentences)
 2. Output the COMPLETE UPDATED PLAN as a JSON code block
 
-Your response format when making changes:
+Response format for modifications:
 ---
-"I've updated the plan to [brief description of changes]."
+"I'll [description of changes]."
 
 \`\`\`json
 {THE COMPLETE UPDATED PLAN JSON HERE}
 \`\`\`
 ---
 
-RULES:
+RULES FOR MODIFICATIONS:
 - The JSON must be VALID and COMPLETE (all weeks, all days)
 - DO NOT output a text summary or bullet points - ONLY JSON
-- DO NOT describe each week in prose - output the raw JSON
 - The code block MUST start with \`\`\`json and end with \`\`\`
 
-THE CURRENT PLAN TO MODIFY:
-\`\`\`json
-${planJSON}
-\`\`\`
-
-Apply the user's requested changes to this JSON and output the complete updated version.`;
+Note: The system will detect modification requests automatically, but you should still explain what you're changing before outputting the JSON.`;
       }
 
       const currentModel = selectedModel?.toLowerCase()?.trim();
@@ -669,18 +676,30 @@ Apply the user's requested changes to this JSON and output the complete updated 
       let assistantResponse;
       console.log('✅ Calling Gemini API (with model fallback chain)');
       
-      // In plan modification mode, use structured output to force JSON
+      // In plan modification mode, detect if user is actually requesting a change
+      // or just asking a question about the plan
       let finalUserMessage = userMessage;
       let finalSequenceStep = sequenceStep;
-      
+
       if (planModificationSystemPrompt) {
-        console.log('📝 Plan modification mode active - using structured output');
-        // Use a fake sequence step to trigger structured output
-        finalSequenceStep = { id: 'modify-plan' };
-        // Append instruction to user message
-        finalUserMessage = `${userMessage}
+        // Check if this is actually a modification request or just a question
+        const isModification = isModificationRequest(userMessage);
+
+        if (isModification) {
+          console.log('📝 Plan modification requested - using structured output');
+          // Use a fake sequence step to trigger structured output
+          finalSequenceStep = { id: 'modify-plan' };
+          // Append instruction to user message
+          finalUserMessage = `${userMessage}
 
 Apply this change to the training plan and output the COMPLETE updated plan as JSON.`;
+        } else {
+          console.log('❓ Question about plan - using conversational mode');
+          // User is asking a question, not requesting modifications
+          // Use conversational mode but with plan context
+          finalSequenceStep = null;
+          // Don't modify the user message - just ask the question
+        }
       }
       
       try {

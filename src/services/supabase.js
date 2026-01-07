@@ -644,7 +644,8 @@ export const getTrainingPlans = async () => {
       .from('training_plans')
       .select('*')
       .eq('athlete_id', athlete.id)
-      .order('created_at', { ascending: false });
+      .order('is_archived', { ascending: true }) // Active plans (is_archived=false) first
+      .order('created_at', { ascending: false }); // Then by creation date
 
     if (plansError) {
       return { error: plansError.message };
@@ -658,7 +659,7 @@ export const getTrainingPlans = async () => {
     const transformedPlans = (plans || []).map(plan => {
       const startDate = plan.start_date ? new Date(plan.start_date) : null;
       const endDate = plan.end_date ? new Date(plan.end_date) : null;
-      
+
       // Calculate is_active: current date is between start_date and end_date (inclusive)
       let isActive = false;
       if (startDate && endDate) {
@@ -675,7 +676,8 @@ export const getTrainingPlans = async () => {
         weeklyHours: plan.weekly_hours,
         createdAt: plan.created_at,
         updatedAt: plan.updated_at,
-        isActive: isActive
+        isActive: isActive,
+        isArchived: plan.is_archived || false
       };
 
       // Include plan_data
@@ -764,11 +766,26 @@ export const saveTrainingPlan = async (planData) => {
       result = data;
     } else {
       // Create new plan
+      // First, archive all currently active (non-archived) plans for this athlete
+      const { error: archiveError } = await supabase
+        .from('training_plans')
+        .update({ is_archived: true, updated_at: new Date().toISOString() })
+        .eq('athlete_id', athlete.id)
+        .eq('is_archived', false); // Only archive plans that aren't already archived
+
+      if (archiveError) {
+        console.warn('Warning: Failed to archive existing plans:', archiveError.message);
+        // Continue anyway - we still want to create the new plan
+      }
+
       // Preserve createdAt if provided, otherwise use current time
       if (planData.createdAt) {
         dbData.created_at = planData.createdAt;
       }
-      
+
+      // Ensure new plan is NOT archived
+      dbData.is_archived = false;
+
       const { data, error } = await supabase
         .from('training_plans')
         .insert(dbData)
@@ -863,7 +880,7 @@ export const deleteTrainingPlan = async (planId) => {
   try {
     // Get current authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (userError || !user) {
       return { success: false, error: 'User not authenticated' };
     }
@@ -888,6 +905,101 @@ export const deleteTrainingPlan = async (planId) => {
 
     if (deleteError) {
       return { success: false, error: deleteError.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * Archive a training plan
+ * @param {string} planId - The plan ID to archive
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const archiveTrainingPlan = async (planId) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (athleteError || !athlete) {
+      return { success: false, error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Archive the plan (RLS will ensure user can only update their own plans)
+    const { error: updateError } = await supabase
+      .from('training_plans')
+      .update({ is_archived: true, updated_at: new Date().toISOString() })
+      .eq('id', planId)
+      .eq('athlete_id', athlete.id); // Ensure user owns this plan
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * Reactivate an archived training plan (and archive any currently active plan)
+ * @param {string} planId - The plan ID to reactivate
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const reactivateTrainingPlan = async (planId) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (athleteError || !athlete) {
+      return { success: false, error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // First, archive all currently active (non-archived) plans for this athlete
+    const { error: archiveOthersError } = await supabase
+      .from('training_plans')
+      .update({ is_archived: true, updated_at: new Date().toISOString() })
+      .eq('athlete_id', athlete.id)
+      .eq('is_archived', false); // Only archive plans that aren't already archived
+
+    if (archiveOthersError) {
+      return { success: false, error: archiveOthersError.message };
+    }
+
+    // Then, reactivate the requested plan
+    const { error: reactivateError } = await supabase
+      .from('training_plans')
+      .update({ is_archived: false, updated_at: new Date().toISOString() })
+      .eq('id', planId)
+      .eq('athlete_id', athlete.id); // Ensure user owns this plan
+
+    if (reactivateError) {
+      return { success: false, error: reactivateError.message };
     }
 
     return { success: true };

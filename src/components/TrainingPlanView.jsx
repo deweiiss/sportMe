@@ -13,7 +13,10 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
   const [editingPlanName, setEditingPlanName] = useState(false);
   const [planName, setPlanName] = useState(planData?.meta?.plan_name || 'Training Plan');
   const [expandedDays, setExpandedDays] = useState(new Set());
-  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(() => {
+    // Calculate the actual current week on mount
+    return getCurrentWeekIndex();
+  });
   const [matchedActivities, setMatchedActivities] = useState({});
   const [suggestions, setSuggestions] = useState([]);
   const [missedWorkouts, setMissedWorkouts] = useState([]);
@@ -75,6 +78,25 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
     loadMatchData();
   }, [planData, planId]);
 
+  // Auto-update current week when week changes (check daily)
+  useEffect(() => {
+    const checkCurrentWeek = () => {
+      const calculatedCurrentWeek = getCurrentWeekIndex();
+      if (calculatedCurrentWeek !== currentWeekIndex) {
+        // Week has changed, auto-jump to current week
+        setCurrentWeekIndex(calculatedCurrentWeek);
+      }
+    };
+
+    // Check immediately on mount
+    checkCurrentWeek();
+
+    // Check every hour for week changes
+    const interval = setInterval(checkCurrentWeek, 60 * 60 * 1000); // 1 hour
+
+    return () => clearInterval(interval);
+  }, [currentWeekIndex, planData]);
+
   if (!planData || !planData.schedule || planData.schedule.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-md">
@@ -89,6 +111,102 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
   const periodization = planData.periodization_overview || {};
   const schedule = planData.schedule || [];
   const currentWeek = schedule[currentWeekIndex] || schedule[0];
+
+  // Calculate which week is the current week based on today's date
+  function getCurrentWeekIndex() {
+    if (!planData || !planData.meta || !planData.meta.start_date || !planData.schedule) {
+      return 0;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(planData.meta.start_date);
+    startDate.setHours(0, 0, 0, 0);
+
+    // If plan hasn't started yet, show week 0
+    if (today < startDate) {
+      return 0;
+    }
+
+    // Check each week to see if today falls within its date range
+    for (let i = 0; i < planData.schedule.length; i++) {
+      const weekRange = getWeekDateRangeForIndex(i, startDate, planData.schedule);
+      if (weekRange) {
+        const weekStart = new Date(weekRange.start);
+        const weekEnd = new Date(weekRange.end);
+        weekStart.setHours(0, 0, 0, 0);
+        weekEnd.setHours(23, 59, 59, 999);
+
+        if (today >= weekStart && today <= weekEnd) {
+          return i;
+        }
+      }
+    }
+
+    // If we're past all weeks, show the last week
+    return planData.schedule.length - 1;
+  }
+
+  // Helper to get week date range (used in getCurrentWeekIndex)
+  function getWeekDateRangeForIndex(weekIndex, startDate, schedule) {
+    if (!startDate || !schedule[weekIndex]) return null;
+
+    let weekStart;
+    if (weekIndex === 0) {
+      weekStart = new Date(startDate);
+    } else {
+      const prevWeekEnd = getWeekEndForIndex(weekIndex - 1, startDate, schedule);
+      if (prevWeekEnd) {
+        weekStart = new Date(prevWeekEnd);
+        weekStart.setDate(weekStart.getDate() + 1);
+      } else {
+        weekStart = new Date(startDate);
+        weekStart.setDate(startDate.getDate() + (weekIndex * 7));
+      }
+    }
+
+    const weekEnd = getWeekEndForIndex(weekIndex, startDate, schedule);
+    return { start: weekStart, end: weekEnd };
+  }
+
+  function getWeekEndForIndex(weekIndex, startDate, schedule) {
+    if (!startDate || !schedule[weekIndex]) return null;
+
+    if (weekIndex === 0) {
+      const dayOfWeek = startDate.getDay();
+      const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+      const weekEnd = new Date(startDate);
+      weekEnd.setDate(startDate.getDate() + daysUntilSunday);
+      return weekEnd;
+    } else {
+      const prevWeekEnd = getWeekEndForIndex(weekIndex - 1, startDate, schedule);
+      if (prevWeekEnd) {
+        const weekEnd = new Date(prevWeekEnd);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        return weekEnd;
+      }
+    }
+
+    return null;
+  }
+
+  // Determine week status relative to current date
+  const getWeekStatus = (weekIndex) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const weekRange = getWeekDateRange(weekIndex);
+    if (!weekRange) return 'future';
+
+    const weekStart = new Date(weekRange.start);
+    const weekEnd = new Date(weekRange.end);
+    weekStart.setHours(0, 0, 0, 0);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    if (today < weekStart) return 'future';
+    if (today > weekEnd) return 'past';
+    return 'current';
+  };
 
   // Calculate week date range
   const getWeekDateRange = (weekIndex) => {
@@ -199,7 +317,12 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
 
   const toggleWorkoutCompleted = (weekIndex, dayIndex) => {
     if (!onPlanUpdate) return;
-    
+
+    // Prevent editing past weeks
+    if (getWeekStatus(weekIndex) === 'past') {
+      return;
+    }
+
     const updatedSchedule = schedule.map((week, wIdx) => {
       if (wIdx !== weekIndex) return week;
       return {
@@ -554,14 +677,25 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
       {/* Weekly View */}
       <div className="mb-6">
         <div className="flex items-center gap-4 mb-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white m-0">
-            Week {currentWeek.week_number} ({currentWeek.phase_name})
-            {formatWeekRange(currentWeekIndex) && (
-              <span className="text-base font-normal text-gray-600 dark:text-gray-400 ml-2">
-                {formatWeekRange(currentWeekIndex)}
-              </span>
+          <div className="flex items-center gap-2 flex-1">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white m-0">
+              Week {currentWeek.week_number} ({currentWeek.phase_name})
+              {formatWeekRange(currentWeekIndex) && (
+                <span className="text-base font-normal text-gray-600 dark:text-gray-400 ml-2">
+                  {formatWeekRange(currentWeekIndex)}
+                </span>
+              )}
+            </h3>
+            {getWeekStatus(currentWeekIndex) === 'current' && (
+              <Badge variant="pending">Current Week</Badge>
             )}
-          </h3>
+            {getWeekStatus(currentWeekIndex) === 'past' && (
+              <Badge variant="unmatched">Past</Badge>
+            )}
+            {getWeekStatus(currentWeekIndex) === 'future' && (
+              <Badge variant="unmatched">Upcoming</Badge>
+            )}
+          </div>
           {schedule.length > 1 && (
             <div className="flex gap-2">
               <button
@@ -618,11 +752,15 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
             const dayDate = getDayDate(currentWeekIndex, dayIndex);
             const statusBadge = getDayStatusBadge(day, currentWeekIndex, dayIndex);
             const matchedActivity = day.matched_activity_id ? matchedActivities[day.matched_activity_id] : null;
+            const weekStatus = getWeekStatus(currentWeekIndex);
+            const isPastWeek = weekStatus === 'past';
 
             return (
               <div
                 key={dayIndex}
-                className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800 hover:shadow-md transition-shadow"
+                className={`rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800 hover:shadow-md transition-shadow ${
+                  isPastWeek ? 'opacity-60' : ''
+                }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -651,12 +789,12 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
                         matchType={day.match_type}
                         matchConfidence={day.match_confidence}
                         onUnmatch={() => handleUnmatch(currentWeekIndex, dayIndex)}
-                        showUnmatchButton={true}
+                        showUnmatchButton={!isPastWeek}
                       />
                     )}
 
-                    {/* Link activity button (for unmatched days) */}
-                    {!day.matched_activity_id && !day.is_completed && (
+                    {/* Link activity button (for unmatched days, not past weeks) */}
+                    {!day.matched_activity_id && !day.is_completed && !isPastWeek && (
                       <button
                         onClick={() => handleOpenMatchingModal(currentWeekIndex, dayIndex, day)}
                         className="mt-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
@@ -691,12 +829,13 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
                   <div className="flex items-center gap-2 ml-4">
                     <button
                       onClick={() => toggleWorkoutCompleted(currentWeekIndex, dayIndex)}
+                      disabled={isPastWeek}
                       className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                         day.is_completed
                           ? 'bg-green-500 border-green-500 text-white'
                           : 'border-gray-300 dark:border-gray-600 hover:border-yale-blue-500'
-                      }`}
-                      aria-label={day.is_completed ? 'Mark as incomplete' : 'Mark as complete'}
+                      } ${isPastWeek ? 'cursor-not-allowed opacity-50' : ''}`}
+                      aria-label={isPastWeek ? 'Past week (cannot edit)' : (day.is_completed ? 'Mark as incomplete' : 'Mark as complete')}
                     >
                       {day.is_completed && (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

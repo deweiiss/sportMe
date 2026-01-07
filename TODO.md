@@ -34,7 +34,6 @@
 - [x] The chatbot seems to have incorporated strength trainings in the plan, although I didn't specify that I wanted to do that. Is that intended? (As in: did I specify in the prompts that we should include strength trainings?)
   - **REVIEWED**: Strength training is only explicitly mentioned in WEIGHT_LOSS strategy. For COMPETITION plans, Gemini may add it based on best practices. If you don't want it, you can ask the bot to remove it when discussing the plan. To prevent this, we could add an explicit question during intake: "Do you want to include strength/cross-training?"
   - Yes, lets do' that
-  - **FIXED**: Added explicit question to intake sequence asking if user wants to include strength/cross-training. Updated all intake steps (intake-start, validation-gap-check, athlete-summary, generate-plan) to collect, validate, and respect this preference. AI now ONLY includes strength/cross-training if explicitly requested.
 
 - [ ] The chatbot seems to not have asked how many days per week I can/want to workout. Is this intended? Like, is it just assumed based on my Strava data?
   - **REVIEWED**: Yes, this is intentional. The bot uses your Strava "runs/week" data to determine current frequency. The intake asks "which days work best?" but not "how many days?" to avoid forcing a change. If you want to increase/decrease frequency, you can mention it when answering about goals or schedule preferences. 

@@ -252,7 +252,7 @@ DO NOT ASK for information you can already see:
 - Longest run → use "Longest" from their Strava data
 - Recent training → use the activity listings
 
-START your response by stating what you can see from their Strava data (e.g., "I can see from your Strava that you're averaging X km/week...").
+START your response by stating what you can see from their Strava data (e.g., "I can see from your Strava that you're averaging X km/week and running Y times per week...").
 
 Then ask ONLY about things NOT in their Strava data:
 
@@ -262,7 +262,10 @@ Then ask ONLY about things NOT in their Strava data:
 
 3. Injury history & health constraints (any past injuries or medical limitations?)
 
-4. Schedule preferences (which days work best? any time constraints?)
+4. Training frequency & schedule:
+   - Based on their Strava data, suggest a number of days per week (e.g., "I see you're currently running X days/week - would you like to continue with that, or adjust it?")
+   - Ask which specific days of the week work best for them (e.g., Monday, Wednesday, Friday, Sunday)
+   - Ask about any time constraints
 
 5. Cross-training & strength (do you want to include strength training or cross-training activities in your plan?)
 
@@ -290,6 +293,8 @@ REMEMBER: You already have from Strava:
 - Average pace from "Metrics"
 
 Check what's STILL missing that Strava doesn't provide:
+- Training frequency confirmation (user should have confirmed/adjusted the days per week based on Strava suggestion)
+- Specific days of the week that work for the user (e.g., Monday, Wednesday, Friday)
 - Easy/conversational pace (different from average pace)
 - Cross-training/strength training preference (whether to include it in the plan)
 - Specific race goal time (if competition plan)
@@ -324,7 +329,8 @@ USE USER'S ANSWERS FOR:
 - Goal and target date
 - Plan start date (if not specified, default to tomorrow)
 - Injury history and health constraints
-- Schedule preferences
+- Training frequency (confirmed/adjusted days per week)
+- Specific days of the week that work for them
 - Cross-training/strength training preference
 - Easy/conversational pace (if they provided it)
 
@@ -332,8 +338,9 @@ FORMAT (use bullet points):
 - **Goal:** [from conversation]
 - **Plan start date:** [from conversation, or "Tomorrow" if not specified]
 - **Current fitness (from Strava):** X km/week, X runs/week, longest run X km, avg pace X min/km
+- **Training frequency:** [X days per week - confirmed/adjusted by user]
+- **Training days:** [Specific days mentioned by user, e.g., "Monday, Wednesday, Friday, Sunday"]
 - **Constraints/Injuries:** [from conversation, or "None mentioned"]
-- **Schedule:** [from conversation]
 - **Cross-training/Strength:** [from conversation - whether to include it or not]
 - **Assumptions:** [only list things NOT in Strava AND not answered by user]
 
@@ -393,7 +400,9 @@ GENERAL RULES FOR PLAN CREATION:
 
 4. Constraints: Strictly adhere to ALL constraints mentioned in the conversation: available days/time, weekly schedule, time preferences, location constraints, and any other limitations the athlete specified.
 
-5. Cross-training/Strength: ONLY include strength training or cross-training activities if the athlete explicitly requested them. If they said NO or didn't want them, do NOT add any strength, cross-training, or supplementary activities to the plan. Respect their preference completely.
+5. Training Frequency & Days: Use the EXACT number of training days per week that the user confirmed (not the Strava average, but what they confirmed in the conversation). Schedule workouts on the SPECIFIC days of the week they mentioned (e.g., if they said "Monday, Wednesday, Friday, Sunday", only schedule runs on those days). This is critical - do NOT add extra training days beyond what the user confirmed.
+
+6. Cross-training/Strength: ONLY include strength training or cross-training activities if the athlete explicitly requested them. If they said NO or didn't want them, do NOT add any strength, cross-training, or supplementary activities to the plan. Respect their preference completely.
 
 ⚠️⚠️⚠️ CRITICAL DATE RULES - MUST FOLLOW ⚠️⚠️⚠️
 - Look for the "CURRENT DATE" box in the conversation - it shows THE YEAR!

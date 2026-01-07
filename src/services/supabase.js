@@ -277,51 +277,84 @@ export const getAthleteProfile = async () => {
  * @param {Array} profileData.shoes - Shoes array (JSONB)
  * @returns {Promise<{data?: Object, error?: string}>}
  */
-export const updateAthleteProfile = async (profileData) => {
+export const updateAthleteProfile = async (profileData, source = 'manual') => {
   try {
     // Get current authenticated user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (userError || !user) {
       return { error: 'User not authenticated' };
     }
 
+    // Get current profile to retrieve existing field_sources
+    const { data: currentProfile } = await supabase
+      .from('athletes')
+      .select('field_sources')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const currentSources = currentProfile?.field_sources || {};
+    const now = new Date().toISOString();
+
     // Prepare update data - only include fields that are provided
     // Convert empty strings to null to allow clearing fields
     const updateData = {
-      updated_at: new Date().toISOString()
+      updated_at: now
     };
+
+    // Track which fields are being updated for field_sources
+    const updatedFields = [];
 
     if (profileData.firstname !== undefined) {
       updateData.firstname = profileData.firstname || null;
+      updatedFields.push('firstname');
     }
     if (profileData.lastname !== undefined) {
       updateData.lastname = profileData.lastname || null;
+      updatedFields.push('lastname');
     }
     if (profileData.weight !== undefined) {
       updateData.weight = profileData.weight === '' || profileData.weight === null ? null : profileData.weight;
+      updatedFields.push('weight');
     }
     if (profileData.city !== undefined) {
       updateData.city = profileData.city || null;
+      updatedFields.push('city');
     }
     if (profileData.state !== undefined) {
       updateData.state = profileData.state || null;
+      updatedFields.push('state');
     }
     if (profileData.country !== undefined) {
       updateData.country = profileData.country || null;
+      updatedFields.push('country');
     }
     if (profileData.sex !== undefined) {
       updateData.sex = profileData.sex || null;
+      updatedFields.push('sex');
     }
     if (profileData.birthday !== undefined) {
       updateData.birthday = profileData.birthday || null;
+      updatedFields.push('birthday');
     }
     if (profileData.bikes !== undefined) {
       updateData.bikes = profileData.bikes && profileData.bikes.length > 0 ? profileData.bikes : null;
+      updatedFields.push('bikes');
     }
     if (profileData.shoes !== undefined) {
       updateData.shoes = profileData.shoes && profileData.shoes.length > 0 ? profileData.shoes : null;
+      updatedFields.push('shoes');
     }
+
+    // Update field_sources for modified fields
+    const newSources = { ...currentSources };
+    updatedFields.forEach(field => {
+      newSources[field] = {
+        source: source, // 'manual', 'strava', or 'chat'
+        updated_at: now
+      };
+    });
+    updateData.field_sources = newSources;
 
     // Update the athlete profile
     const { data, error } = await supabase
@@ -384,34 +417,47 @@ export const syncAthleteProfileFromStrava = async () => {
     }
 
     // Prepare update data with selective merge logic
+    const now = new Date().toISOString();
     const updateData = {
-      updated_at: new Date().toISOString()
+      updated_at: now
     };
+
+    // Track which fields are being updated from Strava for field_sources
+    const currentSources = currentProfile.field_sources || {};
+    const updatedFields = [];
 
     // Only update fields that are NULL/empty in database (preserve user edits)
     if (!currentProfile.firstname && stravaAthlete.firstname) {
       updateData.firstname = stravaAthlete.firstname;
+      updatedFields.push('firstname');
     }
     if (!currentProfile.lastname && stravaAthlete.lastname) {
       updateData.lastname = stravaAthlete.lastname;
+      updatedFields.push('lastname');
     }
     if ((currentProfile.weight === null || currentProfile.weight === undefined) && stravaAthlete.weight) {
       updateData.weight = stravaAthlete.weight;
+      updatedFields.push('weight');
     }
     if (!currentProfile.city && stravaAthlete.city) {
       updateData.city = stravaAthlete.city;
+      updatedFields.push('city');
     }
     if (!currentProfile.state && stravaAthlete.state) {
       updateData.state = stravaAthlete.state;
+      updatedFields.push('state');
     }
     if (!currentProfile.country && stravaAthlete.country) {
       updateData.country = stravaAthlete.country;
+      updatedFields.push('country');
     }
     if (!currentProfile.sex && stravaAthlete.sex) {
       updateData.sex = stravaAthlete.sex;
+      updatedFields.push('sex');
     }
     if (!currentProfile.birthday && stravaAthlete.birthday) {
       updateData.birthday = stravaAthlete.birthday;
+      updatedFields.push('birthday');
     }
 
     // Always update bikes and shoes (gear section) regardless of existing data
@@ -424,10 +470,21 @@ export const syncAthleteProfileFromStrava = async () => {
     const shoesData = (stravaAthlete.shoes !== undefined && stravaAthlete.shoes !== null)
       ? (Array.isArray(stravaAthlete.shoes) ? stravaAthlete.shoes : null)
       : null;
-    
+
     // Always update gear (even if it's the same, to ensure we have latest data)
     updateData.bikes = bikesData;
     updateData.shoes = shoesData;
+    updatedFields.push('bikes', 'shoes');
+
+    // Update field_sources for all fields synced from Strava
+    const newSources = { ...currentSources };
+    updatedFields.forEach(field => {
+      newSources[field] = {
+        source: 'strava',
+        updated_at: now
+      };
+    });
+    updateData.field_sources = newSources;
 
     // Log for debugging - log the raw Strava response too
     console.log('Syncing gear from Strava:', { 

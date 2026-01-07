@@ -303,16 +303,53 @@ const AboutMePage = () => {
     );
   }
 
+  // Get field source badge
+  const getFieldSourceBadge = (fieldName) => {
+    const source = athleteProfile?.field_sources?.[fieldName];
+    if (!source) return null;
+
+    const badges = {
+      strava: {
+        icon: '🔄',
+        text: 'Auto-filled from Strava',
+        color: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200'
+      },
+      chat: {
+        icon: '💬',
+        text: 'From conversation',
+        color: 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-200'
+      }
+      // 'manual' doesn't show a badge
+    };
+
+    const badge = badges[source.source];
+    if (!badge) return null;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${badge.color}`}
+        title={`${badge.text} on ${new Date(source.updated_at).toLocaleDateString()}`}
+      >
+        <span>{badge.icon}</span>
+        <span className="hidden sm:inline">{source.source === 'strava' ? 'Strava' : 'Chat'}</span>
+      </span>
+    );
+  };
+
   // Render editable field
   const renderEditableField = (label, fieldName, value, inputType = 'text', options = null) => {
     const isEditing = editingField === fieldName;
-    const displayValue = fieldName === 'weight' ? formatWeight(value) : 
+    const displayValue = fieldName === 'weight' ? formatWeight(value) :
                         fieldName === 'sex' ? formatGender(value) :
                         formatValue(value);
+    const sourceBadge = getFieldSourceBadge(fieldName);
 
     return (
       <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
-        <span className="font-semibold text-gray-600 dark:text-gray-300">{label}:</span>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-600 dark:text-gray-300">{label}:</span>
+          {sourceBadge}
+        </div>
         <div className="flex items-center gap-2">
           {isEditing ? (
             <>
@@ -494,8 +531,15 @@ const AboutMePage = () => {
 
         {/* Gear Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Gear</h2>
-          
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white m-0">Gear</h2>
+            {(getFieldSourceBadge('bikes') || getFieldSourceBadge('shoes')) && (
+              <div className="flex items-center gap-2">
+                {getFieldSourceBadge('bikes')}
+              </div>
+            )}
+          </div>
+
           {/* Bikes */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Bikes</h3>
@@ -545,7 +589,16 @@ const AboutMePage = () => {
 
         {/* Running Experience Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Running experience</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white m-0">Running experience</h2>
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200"
+              title="Auto-calculated from Strava activities"
+            >
+              <span>🔄</span>
+              <span className="hidden sm:inline">Strava</span>
+            </span>
+          </div>
           <div className="space-y-3">
             <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
               <span className="font-semibold text-gray-600 dark:text-gray-300">Frequency:</span>

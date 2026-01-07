@@ -345,6 +345,14 @@ export const updateAthleteProfile = async (profileData, source = 'manual') => {
       updateData.shoes = profileData.shoes && profileData.shoes.length > 0 ? profileData.shoes : null;
       updatedFields.push('shoes');
     }
+    if (profileData.injuries !== undefined) {
+      updateData.injuries = profileData.injuries || null;
+      updatedFields.push('injuries');
+    }
+    if (profileData.environment !== undefined) {
+      updateData.environment = profileData.environment || null;
+      updatedFields.push('environment');
+    }
 
     // Update field_sources for modified fields
     const newSources = { ...currentSources };

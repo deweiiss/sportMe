@@ -365,6 +365,14 @@ const AboutMePage = () => {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+              ) : inputType === 'textarea' ? (
+                <textarea
+                  value={editValues[fieldName] || ''}
+                  onChange={(e) => handleInputChange(fieldName, e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[300px] min-h-[80px]"
+                  disabled={saving}
+                  placeholder="Enter details..."
+                />
               ) : (
                 <input
                   type={inputType}
@@ -623,16 +631,8 @@ const AboutMePage = () => {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">Everything else</h2>
           <div className="space-y-3">
-            {/* TODO: Fetch injuries from conversations/data */}
-            <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
-              <span className="font-semibold text-gray-600 dark:text-gray-300">Injuries:</span>
-              <span className="text-gray-900 dark:text-white font-medium">TODO: Fetch from conversations/data</span>
-            </div>
-            {/* TODO: Fetch environment from conversations/data */}
-            <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
-              <span className="font-semibold text-gray-600 dark:text-gray-300">Environment:</span>
-              <span className="text-gray-900 dark:text-white font-medium">TODO: Fetch from conversations/data</span>
-            </div>
+            {renderEditableField('Injuries', 'injuries', athleteProfile?.injuries, 'textarea')}
+            {renderEditableField('Environment', 'environment', athleteProfile?.environment, 'textarea')}
           </div>
         </div>
 

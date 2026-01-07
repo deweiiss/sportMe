@@ -16,6 +16,8 @@ import { getTrainingPlanStep, getDefaultTrainingPlanStep } from '../prompts/prom
 import { getTrainingPlans, saveTrainingPlan } from '../services/supabase';
 import { extractTrainingPlanJSON } from '../utils/jsonExtraction';
 import { isModificationRequest } from '../utils/planModificationDetection';
+import { autoUpdateProfileFromMessage } from '../services/profileExtractor';
+import { getAthleteProfile } from '../services/supabase';
 
 /**
  * Generate a meaningful chat title from the first user message
@@ -673,6 +675,19 @@ Keep your greeting short and ask what they'd like to discuss or change.`;
       }
       
       await saveChatMessage('user', userMessage, chatId, newTitle);
+
+      // Background: Extract and auto-update profile information from user message
+      try {
+        const profileResult = await getAthleteProfile();
+        if (profileResult.data) {
+          autoUpdateProfileFromMessage(userMessage, profileResult.data).catch(err => {
+            // Silently handle errors - profile extraction shouldn't block chat
+            console.error('Background profile extraction failed:', err);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to get profile for extraction:', err);
+      }
 
       const messageHistory = messages.map(msg => ({
         role: msg.role,

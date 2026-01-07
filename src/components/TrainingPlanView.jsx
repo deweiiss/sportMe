@@ -4,10 +4,12 @@ import ActivityPreview from './ActivityPreview';
 import SuggestedMatchesBanner from './SuggestedMatchesBanner';
 import MatchingModal from './MatchingModal';
 import MissedWorkoutsAlert from './MissedWorkoutsAlert';
+import ComplianceInsights from './ComplianceInsights';
 import { unmatchDay, manuallyMatchDay, markDayCompletedManually, markDayAsMissed } from '../utils/planUpdater';
 import { updateTrainingPlanSchedule, getActivitiesFromSupabase } from '../services/supabase';
 import { acceptSuggestion, rejectSuggestion } from '../services/activityMatchingOrchestrator';
 import { detectMissedWorkouts } from '../services/workoutMatcher';
+import { analyzePlanCompliance, generatePlanAdjustmentSuggestions } from '../services/planComplianceChecker';
 
 const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
   const [editingPlanName, setEditingPlanName] = useState(false);
@@ -25,6 +27,8 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
   const [showMatchingModal, setShowMatchingModal] = useState(false);
   const [selectedWorkoutForMatching, setSelectedWorkoutForMatching] = useState(null);
   const [matchedActivityIds, setMatchedActivityIds] = useState(new Set());
+  const [complianceAnalysis, setComplianceAnalysis] = useState(null);
+  const [onRequestPlanAdjustment, setOnRequestPlanAdjustment] = useState(null);
 
   // Load matched activities and detect missed workouts
   useEffect(() => {
@@ -63,6 +67,18 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
         if (planData) {
           const missed = detectMissedWorkouts(planData, 3);
           setMissedWorkouts(missed);
+        }
+
+        // Calculate compliance analysis
+        if (planData) {
+          const compliance = analyzePlanCompliance(planData);
+          setComplianceAnalysis(compliance);
+
+          // Log suggestions if compliance is low
+          if (compliance.overallComplianceRate < 70) {
+            const suggestions = generatePlanAdjustmentSuggestions(compliance);
+            console.log('Plan adjustment suggestions:', suggestions);
+          }
         }
 
         // TODO Phase 4: Load suggestions from persistent storage
@@ -588,6 +604,23 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
     setMissedWorkouts([]);
   };
 
+  // Handle request for plan adjustment
+  const handleRequestPlanAdjustment = () => {
+    if (!complianceAnalysis) return;
+
+    const suggestions = generatePlanAdjustmentSuggestions(complianceAnalysis);
+
+    // For now, show suggestions in console and alert
+    // TODO: Integrate with chat panel to start adjustment conversation
+    console.log('Plan adjustment requested. Suggestions:', suggestions);
+
+    const message = `Based on your ${complianceAnalysis.overallComplianceRate}% compliance rate, here are some suggestions:\n\n${
+      suggestions.map((s, i) => `${i + 1}. ${s.title}\n   ${s.description}`).join('\n\n')
+    }\n\nConsider discussing these adjustments with the AI coach in the chat.`;
+
+    alert(message);
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
       {/* Plan Header */}
@@ -653,6 +686,16 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
 
       {/* Divider */}
       <div className="border-t border-gray-200 dark:border-gray-700 my-6"></div>
+
+      {/* Compliance Insights */}
+      {complianceAnalysis && complianceAnalysis.overallComplianceRate > 0 && (
+        <div className="mb-6">
+          <ComplianceInsights
+            complianceAnalysis={complianceAnalysis}
+            onRequestAdjustment={handleRequestPlanAdjustment}
+          />
+        </div>
+      )}
 
       {/* Missed Workouts Alert */}
       {missedWorkouts.length > 0 && (

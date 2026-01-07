@@ -21,6 +21,87 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
   const schedule = planData.schedule || [];
   const currentWeek = schedule[currentWeekIndex] || schedule[0];
 
+  // Calculate week date range
+  const getWeekDateRange = (weekIndex) => {
+    if (!meta.start_date || !schedule[weekIndex]) return null;
+
+    const startDate = new Date(meta.start_date);
+    const week = schedule[weekIndex];
+
+    // Calculate the start of this week
+    // Week 1 starts on start_date, subsequent weeks start on the Monday after previous week's Sunday
+    let weekStart;
+    if (weekIndex === 0) {
+      weekStart = new Date(startDate);
+    } else {
+      // Find the end of the previous week (Sunday) and add 1 day to get Monday
+      const prevWeekEnd = getWeekEnd(weekIndex - 1);
+      if (prevWeekEnd) {
+        weekStart = new Date(prevWeekEnd);
+        weekStart.setDate(weekStart.getDate() + 1);
+      } else {
+        // Fallback: calculate based on week index
+        weekStart = new Date(startDate);
+        weekStart.setDate(startDate.getDate() + (weekIndex * 7));
+      }
+    }
+
+    // Calculate the end of this week (Sunday)
+    const weekEnd = getWeekEnd(weekIndex);
+
+    return { start: weekStart, end: weekEnd };
+  };
+
+  // Helper to get the end date (Sunday) of a week
+  const getWeekEnd = (weekIndex) => {
+    if (!meta.start_date || !schedule[weekIndex]) return null;
+
+    const startDate = new Date(meta.start_date);
+    const week = schedule[weekIndex];
+
+    if (weekIndex === 0) {
+      // Week 1: find the next Sunday from start_date
+      const dayOfWeek = startDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+      const weekEnd = new Date(startDate);
+      weekEnd.setDate(startDate.getDate() + daysUntilSunday);
+      return weekEnd;
+    } else {
+      // Subsequent weeks: end on Sunday, 7 days after Monday
+      const prevWeekEnd = getWeekEnd(weekIndex - 1);
+      if (prevWeekEnd) {
+        const weekEnd = new Date(prevWeekEnd);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        return weekEnd;
+      }
+    }
+
+    return null;
+  };
+
+  // Get day's actual date
+  const getDayDate = (weekIndex, dayIndex) => {
+    const weekDateRange = getWeekDateRange(weekIndex);
+    if (!weekDateRange) return null;
+
+    const dayDate = new Date(weekDateRange.start);
+    dayDate.setDate(dayDate.getDate() + dayIndex);
+    return dayDate;
+  };
+
+  // Format date for display
+  const formatDate = (date) => {
+    if (!date) return '';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Format week range
+  const formatWeekRange = (weekIndex) => {
+    const range = getWeekDateRange(weekIndex);
+    if (!range) return '';
+    return `${formatDate(range.start)} - ${formatDate(range.end)}`;
+  };
+
   const handlePlanNameSave = () => {
     setEditingPlanName(false);
     if (onPlanUpdate) {
@@ -183,6 +264,11 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
         <div className="flex items-center gap-4 mb-4">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white m-0">
             Week {currentWeek.week_number} ({currentWeek.phase_name})
+            {formatWeekRange(currentWeekIndex) && (
+              <span className="text-base font-normal text-gray-600 dark:text-gray-400 ml-2">
+                {formatWeekRange(currentWeekIndex)}
+              </span>
+            )}
           </h3>
           {schedule.length > 1 && (
             <div className="flex gap-2">
@@ -215,6 +301,7 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
 
             // Rest Day
             if (day.is_rest_day) {
+              const dayDate = getDayDate(currentWeekIndex, dayIndex);
               return (
                 <div
                   key={dayIndex}
@@ -222,6 +309,11 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
                 >
                   <div className="font-medium text-gray-900 dark:text-white">
                     {day.day_name}
+                    {dayDate && (
+                      <span className="text-sm font-normal text-gray-600 dark:text-gray-400 ml-2">
+                        ({formatDate(dayDate)})
+                      </span>
+                    )}
                   </div>
                   <div className="text-gray-600 dark:text-gray-400 mt-1">
                     Rest day
@@ -231,6 +323,7 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
             }
 
             // Active Day
+            const dayDate = getDayDate(currentWeekIndex, dayIndex);
             return (
               <div
                 key={dayIndex}
@@ -240,6 +333,11 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
                   <div className="flex-1">
                     <div className="font-medium text-gray-900 dark:text-white mb-1">
                       {day.day_name}
+                      {dayDate && (
+                        <span className="text-sm font-normal text-gray-600 dark:text-gray-400 ml-2">
+                          ({formatDate(dayDate)})
+                        </span>
+                      )}
                     </div>
                     <div className="text-gray-700 dark:text-gray-300">
                       {getActivityCategoryLabel(day.activity_category)}: {day.activity_title}

@@ -395,7 +395,9 @@ GENERAL RULES FOR PLAN CREATION:
 - The year is shown as "THE YEAR IS: XXXX" - USE THIS EXACT YEAR!
 - DO NOT use 2023 or 2024 unless the context explicitly says so!
 - start_date in your JSON MUST be in format YYYY-MM-DD with the CORRECT year
-- If no start date specified, use "Tomorrow's date" from the context
+- If user specified a start date, use EXACTLY that date (do NOT adjust it!)
+- If NO start date specified, use EXACTLY "Tomorrow's date" from the context (do NOT round to next Monday!)
+- DO NOT change the start date to align with Monday - use the EXACT date provided/tomorrow
 - VALIDATE: Your start_date MUST be >= today's date from the context
 - VALIDATE: All dates must use the year shown in the context (currently 2025!)
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { autoSyncActivities } from '../services/stravaSync';
 import { getStravaAthleteId } from '../services/stravaApi';
 import { getAccessToken } from '../services/stravaApi';
+import { matchNewActivities } from '../services/activityMatchingOrchestrator';
 
 // Global sync lock to prevent multiple instances from syncing simultaneously
 let globalSyncInProgress = false;
@@ -55,13 +56,28 @@ export const useStravaSync = (options = {}) => {
 
     try {
       const result = await autoSyncActivities(stravaId);
-      
+
       if (result.success) {
         if (callbacksRef.current.onSyncComplete) {
           callbacksRef.current.onSyncComplete(result);
         }
         if (result.synced > 0) {
           console.log(`✅ Synced ${result.synced} activities (${result.created} new, ${result.updated} updated)`);
+        }
+
+        // Trigger activity matching if new activities were created
+        if (result.created > 0) {
+          console.log('🔄 Triggering activity matching for new activities...');
+          try {
+            // Match activities created since last sync time
+            const matchResult = await matchNewActivities(null, result.lastSyncTime);
+            if (matchResult.success && matchResult.matched > 0) {
+              console.log(`✅ Auto-matched ${matchResult.matched} activities to training plan`);
+            }
+          } catch (matchError) {
+            console.error('Activity matching error (non-critical):', matchError);
+            // Don't fail the sync if matching fails
+          }
         }
       } else {
         if (callbacksRef.current.onSyncError) {

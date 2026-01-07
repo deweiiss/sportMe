@@ -112,12 +112,52 @@ const calculateActivityStats = (activities) => {
  */
 const isPlanActive = (plan) => {
   if (!plan.startDate || !plan.endDate) return false;
-  
+
   const now = new Date();
   const startDate = new Date(plan.startDate);
   const endDate = new Date(plan.endDate);
-  
+
   return now >= startDate && now <= endDate;
+};
+
+/**
+ * Get athlete baseline metrics for workout classification and matching
+ * Fetches recent activities and calculates average pace, distance, etc.
+ *
+ * @returns {Promise<Object|null>} Athlete baseline metrics
+ * @returns {number} avgPace - Average pace in min/km
+ * @returns {number} longestDistance - Longest run in km
+ * @returns {number} avgDistance - Average run distance in km
+ * @returns {number} avgRunsPerWeek - Average runs per week
+ */
+export const getAthleteBaseline = async () => {
+  try {
+    // Fetch recent activities (same as getUserContext does)
+    const activitiesResult = await getActivitiesFromSupabase();
+    const activities = activitiesResult.data || [];
+
+    if (activities.length === 0) {
+      return null;
+    }
+
+    // Calculate stats using existing helper
+    const stats = calculateActivityStats(activities);
+
+    if (!stats) {
+      return null;
+    }
+
+    // Return in format expected by workout classifier/matcher
+    return {
+      avgPace: stats.avgPace ? parseFloat(stats.avgPace) : null,
+      longestDistance: stats.longestDistance ? parseFloat(stats.longestDistance) : null,
+      avgDistance: stats.avgDistance ? parseFloat(stats.avgDistance) : null,
+      avgRunsPerWeek: stats.avgRunsPerWeek ? parseFloat(stats.avgRunsPerWeek) : null
+    };
+  } catch (error) {
+    console.error('Error fetching athlete baseline:', error);
+    return null;
+  }
 };
 
 /**

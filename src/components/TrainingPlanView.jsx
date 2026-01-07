@@ -1,10 +1,79 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Badge from './Badge';
+import ActivityPreview from './ActivityPreview';
+import SuggestedMatchesBanner from './SuggestedMatchesBanner';
+import MatchingModal from './MatchingModal';
+import MissedWorkoutsAlert from './MissedWorkoutsAlert';
+import { unmatchDay, manuallyMatchDay, markDayCompletedManually, markDayAsMissed } from '../utils/planUpdater';
+import { updateTrainingPlanSchedule, getActivitiesFromSupabase } from '../services/supabase';
+import { acceptSuggestion, rejectSuggestion } from '../services/activityMatchingOrchestrator';
+import { detectMissedWorkouts } from '../services/workoutMatcher';
 
-const TrainingPlanView = ({ planData, onPlanUpdate }) => {
+const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
   const [editingPlanName, setEditingPlanName] = useState(false);
   const [planName, setPlanName] = useState(planData?.meta?.plan_name || 'Training Plan');
   const [expandedDays, setExpandedDays] = useState(new Set());
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
+  const [matchedActivities, setMatchedActivities] = useState({});
+  const [suggestions, setSuggestions] = useState([]);
+  const [missedWorkouts, setMissedWorkouts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [allActivities, setAllActivities] = useState([]);
+  const [showMatchingModal, setShowMatchingModal] = useState(false);
+  const [selectedWorkoutForMatching, setSelectedWorkoutForMatching] = useState(null);
+  const [matchedActivityIds, setMatchedActivityIds] = useState(new Set());
+
+  // Load matched activities and detect missed workouts
+  useEffect(() => {
+    const loadMatchData = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch all activities to populate matched activity details
+        const activitiesResult = await getActivitiesFromSupabase(null, 200, 0);
+        if (activitiesResult.data) {
+          const activitiesById = {};
+          const allActivityIds = new Set();
+          const matchedIds = new Set();
+
+          activitiesResult.data.forEach(activity => {
+            activitiesById[activity.id] = activity;
+            allActivityIds.add(activity.id);
+          });
+
+          // Build set of already matched activity IDs
+          if (planData && planData.schedule) {
+            planData.schedule.forEach(week => {
+              week.days.forEach(day => {
+                if (day.matched_activity_id) {
+                  matchedIds.add(day.matched_activity_id);
+                }
+              });
+            });
+          }
+
+          setMatchedActivities(activitiesById);
+          setAllActivities(activitiesResult.data);
+          setMatchedActivityIds(matchedIds);
+        }
+
+        // Detect missed workouts (3-day grace period)
+        if (planData) {
+          const missed = detectMissedWorkouts(planData, 3);
+          setMissedWorkouts(missed);
+        }
+
+        // TODO Phase 4: Load suggestions from persistent storage
+        // const suggestions = await getSuggestedMatches(planId);
+        // setSuggestions(suggestions);
+      } catch (error) {
+        console.error('Error loading match data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadMatchData();
+  }, [planData, planId]);
 
   if (!planData || !planData.schedule || planData.schedule.length === 0) {
     return (
@@ -193,6 +262,209 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
     return labels[segmentType] || segmentType;
   };
 
+  // Unmatch a day
+  const handleUnmatch = async (weekIndex, dayIndex) => {
+    if (!planId || !onPlanUpdate) return;
+
+    try {
+      const updatedPlan = unmatchDay(planData, weekIndex, dayIndex);
+      const result = await updateTrainingPlanSchedule(planId, updatedPlan);
+
+      if (result.success) {
+        onPlanUpdate(updatedPlan);
+      } else {
+        console.error('Failed to unmatch:', result.error);
+      }
+    } catch (error) {
+      console.error('Error unmatching:', error);
+    }
+  };
+
+  // Accept a suggestion
+  const handleAcceptSuggestion = async (suggestion) => {
+    if (!planId) return;
+
+    try {
+      const result = await acceptSuggestion(
+        planId,
+        suggestion.match.weekIndex,
+        suggestion.match.dayIndex,
+        suggestion.activity
+      );
+
+      if (result.success) {
+        // Remove from suggestions
+        setSuggestions(prev => prev.filter(s =>
+          s.match.weekIndex !== suggestion.match.weekIndex ||
+          s.match.dayIndex !== suggestion.match.dayIndex
+        ));
+
+        // Reload plan data
+        if (onPlanUpdate) {
+          // Trigger parent to reload
+          window.location.reload(); // Simple approach for now
+        }
+      }
+    } catch (error) {
+      console.error('Error accepting suggestion:', error);
+    }
+  };
+
+  // Reject a suggestion
+  const handleRejectSuggestion = async (suggestion) => {
+    if (!planId) return;
+
+    try {
+      await rejectSuggestion(
+        planId,
+        suggestion.match.weekIndex,
+        suggestion.match.dayIndex
+      );
+
+      // Remove from suggestions
+      setSuggestions(prev => prev.filter(s =>
+        s.match.weekIndex !== suggestion.match.weekIndex ||
+        s.match.dayIndex !== suggestion.match.dayIndex
+      ));
+    } catch (error) {
+      console.error('Error rejecting suggestion:', error);
+    }
+  };
+
+  // Get status badge for a day
+  const getDayStatusBadge = (day, weekIndex, dayIndex) => {
+    // Check if missed
+    const isMissed = missedWorkouts.some(
+      m => m.weekIndex === weekIndex && m.dayIndex === dayIndex
+    );
+
+    if (day.is_missed || isMissed) {
+      return <Badge variant="missed">Missed</Badge>;
+    }
+
+    if (day.matched_activity_id) {
+      const variant = day.match_type === 'auto' ? 'auto-matched' :
+                      day.match_type === 'suggested_accepted' ? 'suggested_accepted' :
+                      'manual';
+      return <Badge variant={variant}>{day.match_type === 'auto' ? 'Auto-matched' : day.match_type === 'suggested_accepted' ? 'Suggested' : 'Manual'}</Badge>;
+    }
+
+    if (day.is_completed && !day.matched_activity_id) {
+      return <Badge variant="manual">Completed</Badge>;
+    }
+
+    return null;
+  };
+
+  // Open matching modal for a workout
+  const handleOpenMatchingModal = (weekIndex, dayIndex, day) => {
+    setSelectedWorkoutForMatching({ weekIndex, dayIndex, day });
+    setShowMatchingModal(true);
+  };
+
+  // Manually match an activity to a workout
+  const handleManualMatch = async (activity) => {
+    if (!planId || !selectedWorkoutForMatching || !onPlanUpdate) return;
+
+    try {
+      const { weekIndex, dayIndex, day } = selectedWorkoutForMatching;
+      const activityDate = new Date(activity.start_date_local || activity.start_date)
+        .toISOString()
+        .split('T')[0];
+
+      const updatedPlan = manuallyMatchDay(
+        planData,
+        weekIndex,
+        dayIndex,
+        activity.id,
+        activityDate
+      );
+
+      const result = await updateTrainingPlanSchedule(planId, updatedPlan);
+
+      if (result.success) {
+        onPlanUpdate(updatedPlan);
+        setShowMatchingModal(false);
+        setSelectedWorkoutForMatching(null);
+      } else {
+        console.error('Failed to match:', result.error);
+      }
+    } catch (error) {
+      console.error('Error manually matching:', error);
+    }
+  };
+
+  // Mark missed workout as completed
+  const handleMarkMissedCompleted = async (workout, note) => {
+    if (!planId || !onPlanUpdate) return;
+
+    try {
+      const updatedPlan = markDayCompletedManually(
+        planData,
+        workout.weekIndex,
+        workout.dayIndex,
+        note
+      );
+
+      const result = await updateTrainingPlanSchedule(planId, updatedPlan);
+
+      if (result.success) {
+        onPlanUpdate(updatedPlan);
+        // Remove from missed workouts
+        setMissedWorkouts(prev =>
+          prev.filter(w =>
+            w.weekIndex !== workout.weekIndex || w.dayIndex !== workout.dayIndex
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking missed workout as completed:', error);
+    }
+  };
+
+  // Skip a missed workout
+  const handleSkipMissedWorkout = async (workout, reason) => {
+    if (!planId || !onPlanUpdate) return;
+
+    try {
+      const updatedPlan = markDayAsMissed(
+        planData,
+        workout.weekIndex,
+        workout.dayIndex,
+        reason
+      );
+
+      const result = await updateTrainingPlanSchedule(planId, updatedPlan);
+
+      if (result.success) {
+        onPlanUpdate(updatedPlan);
+        // Remove from missed workouts (it's now marked, so won't show as alert)
+        setMissedWorkouts(prev =>
+          prev.filter(w =>
+            w.weekIndex !== workout.weekIndex || w.dayIndex !== workout.dayIndex
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error skipping missed workout:', error);
+    }
+  };
+
+  // Link activity to missed workout
+  const handleLinkToMissedWorkout = (workout) => {
+    setSelectedWorkoutForMatching({
+      weekIndex: workout.weekIndex,
+      dayIndex: workout.dayIndex,
+      day: workout.day
+    });
+    setShowMatchingModal(true);
+  };
+
+  // Dismiss missed workouts alert
+  const handleDismissMissedWorkouts = () => {
+    setMissedWorkouts([]);
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md">
       {/* Plan Header */}
@@ -259,6 +531,26 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
       {/* Divider */}
       <div className="border-t border-gray-200 dark:border-gray-700 my-6"></div>
 
+      {/* Missed Workouts Alert */}
+      {missedWorkouts.length > 0 && (
+        <MissedWorkoutsAlert
+          missedWorkouts={missedWorkouts}
+          onMarkCompleted={handleMarkMissedCompleted}
+          onSkipWorkout={handleSkipMissedWorkout}
+          onLinkActivity={handleLinkToMissedWorkout}
+          onDismiss={handleDismissMissedWorkouts}
+        />
+      )}
+
+      {/* Suggested Matches Banner */}
+      {suggestions.length > 0 && (
+        <SuggestedMatchesBanner
+          suggestions={suggestions}
+          onAccept={handleAcceptSuggestion}
+          onReject={handleRejectSuggestion}
+        />
+      )}
+
       {/* Weekly View */}
       <div className="mb-6">
         <div className="flex items-center gap-4 mb-4">
@@ -324,6 +616,9 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
 
             // Active Day
             const dayDate = getDayDate(currentWeekIndex, dayIndex);
+            const statusBadge = getDayStatusBadge(day, currentWeekIndex, dayIndex);
+            const matchedActivity = day.matched_activity_id ? matchedActivities[day.matched_activity_id] : null;
+
             return (
               <div
                 key={dayIndex}
@@ -331,13 +626,16 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900 dark:text-white mb-1">
-                      {day.day_name}
-                      {dayDate && (
-                        <span className="text-sm font-normal text-gray-600 dark:text-gray-400 ml-2">
-                          ({formatDate(dayDate)})
-                        </span>
-                      )}
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="font-medium text-gray-900 dark:text-white">
+                        {day.day_name}
+                        {dayDate && (
+                          <span className="text-sm font-normal text-gray-600 dark:text-gray-400 ml-2">
+                            ({formatDate(dayDate)})
+                          </span>
+                        )}
+                      </div>
+                      {statusBadge}
                     </div>
                     <div className="text-gray-700 dark:text-gray-300">
                       {getActivityCategoryLabel(day.activity_category)}: {day.activity_title}
@@ -345,6 +643,30 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
                     <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       {day.total_estimated_duration_min} min
                     </div>
+
+                    {/* Show matched activity preview */}
+                    {matchedActivity && (
+                      <ActivityPreview
+                        activity={matchedActivity}
+                        matchType={day.match_type}
+                        matchConfidence={day.match_confidence}
+                        onUnmatch={() => handleUnmatch(currentWeekIndex, dayIndex)}
+                        showUnmatchButton={true}
+                      />
+                    )}
+
+                    {/* Link activity button (for unmatched days) */}
+                    {!day.matched_activity_id && !day.is_completed && (
+                      <button
+                        onClick={() => handleOpenMatchingModal(currentWeekIndex, dayIndex, day)}
+                        className="mt-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Link activity
+                      </button>
+                    )}
 
                     {/* Expanded Workout Segments */}
                     {isExpanded && day.workout_structure && day.workout_structure.length > 0 && (
@@ -405,6 +727,19 @@ const TrainingPlanView = ({ planData, onPlanUpdate }) => {
           })}
         </div>
       </div>
+
+      {/* Matching Modal */}
+      <MatchingModal
+        isOpen={showMatchingModal}
+        onClose={() => {
+          setShowMatchingModal(false);
+          setSelectedWorkoutForMatching(null);
+        }}
+        onSelectActivity={handleManualMatch}
+        activities={allActivities}
+        matchedActivityIds={matchedActivityIds}
+        workoutDetails={selectedWorkoutForMatching?.day}
+      />
     </div>
   );
 };

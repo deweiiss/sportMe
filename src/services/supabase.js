@@ -800,6 +800,61 @@ export const saveTrainingPlan = async (planData) => {
 };
 
 /**
+ * Update only the schedule portion of a training plan's plan_data
+ * Preserves meta and periodization_overview, only updates the schedule
+ * Used for activity matching to avoid full plan rewrites
+ *
+ * @param {string} planId - Plan ID to update
+ * @param {Object} updatedPlanData - Complete updated plan_data object with meta, periodization_overview, and schedule
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const updateTrainingPlanSchedule = async (planId, updatedPlanData) => {
+  try {
+    // Get current authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Get the athlete UUID for the current user
+    const { data: athlete, error: athleteError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (athleteError || !athlete) {
+      return { success: false, error: athleteError?.message || 'Athlete not found for this user' };
+    }
+
+    // Validate plan_data structure
+    if (!updatedPlanData || !updatedPlanData.meta || !updatedPlanData.schedule) {
+      return { success: false, error: 'Invalid plan data structure - must include meta and schedule' };
+    }
+
+    // Update the plan_data JSONB column and updated_at timestamp
+    const { error: updateError } = await supabase
+      .from('training_plans')
+      .update({
+        plan_data: updatedPlanData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', planId)
+      .eq('athlete_id', athlete.id); // Ensure user owns this plan
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    console.log(`✅ Updated plan ${planId} schedule`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+/**
  * Delete a training plan for the current authenticated user
  * @param {string} planId - Plan ID to delete
  * @returns {Promise<{success: boolean, error?: string}>}

@@ -6,13 +6,22 @@ import { parseFlattenedTrainingPlan } from '../utils/parseTrainingPlan';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 console.log('API Key loaded:', GEMINI_API_KEY ? 'Yes' : 'No');
 
-// Gemini model fallback chain - try alternatives if primary is overloaded
-const GEMINI_MODELS = [
-  'gemini-2.5-pro',        // Primary - most capable
-  'gemini-2.5-flash',      // Fallback 1 - fast
+// Gemini model fallback chains - different models for different tasks
+// For structured output (plan generation), use most capable models
+const GEMINI_MODELS_STRUCTURED = [
+  'gemini-2.5-pro',        // Primary - most capable, best for complex JSON
+  'gemini-2.5-flash',      // Fallback 1 - fast, still good for JSON
   'gemini-2.5-flash-lite', // Fallback 2 - lightest, highest availability
 ];
-const GEMINI_MODEL = GEMINI_MODELS[0];
+
+// For conversational chat (non-structured), use faster models first
+const GEMINI_MODELS_CHAT = [
+  'gemini-2.5-flash',      // Primary - fast, great for conversation
+  'gemini-2.5-pro',        // Fallback 1 - slower but more capable
+  'gemini-2.5-flash-lite', // Fallback 2 - lightest, highest availability
+];
+
+const GEMINI_MODEL = GEMINI_MODELS_CHAT[0]; // Default to fast model
 const MAX_RETRIES_PER_MODEL = 2;
 const INITIAL_RETRY_DELAY_MS = 2000; // Start with 2 seconds
 const MAX_RETRY_DELAY_MS = 15000;    // Max 15 seconds between retries
@@ -339,20 +348,24 @@ You have direct access to this data. Use it to personalize your coaching.` }]
     // Determine if we should use structured output (for generate-plan step or plan modification)
     const useStructuredOutput = sequenceStep?.id === 'generate-plan' || sequenceStep?.id === 'modify-plan';
     const jsonSchema = useStructuredOutput ? getTrainingPlanJsonSchema() : null;
-    
+
+    // Select appropriate model chain based on task complexity
+    const modelChain = useStructuredOutput ? GEMINI_MODELS_STRUCTURED : GEMINI_MODELS_CHAT;
+
     console.log('📋 Sequence step:', sequenceStep?.id || 'none');
     console.log('📋 Using structured output:', useStructuredOutput);
+    console.log('📋 Model chain:', useStructuredOutput ? 'STRUCTURED (pro first)' : 'CHAT (flash first)');
 
     // Model fallback chain with retries per model
     let lastError;
-    
-    for (let modelIndex = 0; modelIndex < GEMINI_MODELS.length; modelIndex++) {
-      const currentModel = GEMINI_MODELS[modelIndex];
+
+    for (let modelIndex = 0; modelIndex < modelChain.length; modelIndex++) {
+      const currentModel = modelChain[modelIndex];
       
       for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
         try {
           if (modelIndex > 0 || attempt > 1) {
-            console.log(`🔄 Trying ${currentModel} (model ${modelIndex + 1}/${GEMINI_MODELS.length}, attempt ${attempt}/${MAX_RETRIES_PER_MODEL})...`);
+            console.log(`🔄 Trying ${currentModel} (model ${modelIndex + 1}/${modelChain.length}, attempt ${attempt}/${MAX_RETRIES_PER_MODEL})...`);
           }
           
           // Prepare config for structured output if needed
@@ -445,16 +458,17 @@ You have direct access to this data. Use it to personalize your coaching.` }]
               await sleep(delay);
               continue;
             }
-            
+
+
             // Move to next model if available
-            if (modelIndex < GEMINI_MODELS.length - 1) {
-              console.log(`➡️ Switching to ${GEMINI_MODELS[modelIndex + 1]}...`);
+            if (modelIndex < modelChain.length - 1) {
+              console.log(`➡️ Switching to ${modelChain[modelIndex + 1]}...`);
               break; // Break inner loop to try next model
             }
           }
-          
+
           // Last model exhausted, throw error
-          if (modelIndex === GEMINI_MODELS.length - 1) {
+          if (modelIndex === modelChain.length - 1) {
             throw new Error(`All Gemini models failed. Last error: ${errorMsg}`);
           }
         }

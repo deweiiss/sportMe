@@ -269,6 +269,10 @@ const ChatPanel = ({ width = 320 }) => {
   const startTrainingPlanFlow = async () => {
     const newChatId = await startNewChat('Training plan');
     if (!newChatId) return;
+
+    // Switch to chat view (in case user was viewing history)
+    setShowHistoryView(false);
+
     const firstStep = getDefaultTrainingPlanStep();
     setActiveSequenceStepId(firstStep.id);
     
@@ -320,6 +324,14 @@ const ChatPanel = ({ width = 320 }) => {
       // Store detected plan if available
       if (planDataFromResponse) {
         setDetectedPlan(planDataFromResponse);
+      }
+
+      // Advance to next step after initial question
+      // This ensures the user's first reply uses the validation-gap-check prompt, not intake-start again
+      const nextStepId = firstStep.nextId;
+      if (nextStepId) {
+        setActiveSequenceStepId(nextStepId);
+        console.log('✅ Advanced sequence from', firstStep.id, 'to', nextStepId);
       }
     } catch (error) {
       console.error('Error starting training plan flow:', error);

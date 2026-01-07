@@ -184,13 +184,18 @@ export const getTrainingPlanJsonSchema = () => {
             format: "date", 
             description: "Creation date in YYYY-MM-DD format" 
           },
-          start_date: { 
-            type: "string", 
-            format: "date", 
-            description: "Plan start date in YYYY-MM-DD format" 
+          start_date: {
+            type: "string",
+            format: "date",
+            description: "Plan start date in YYYY-MM-DD format"
+          },
+          goal_date: {
+            type: "string",
+            format: "date",
+            description: "Target race/goal date in YYYY-MM-DD format (the day of the race/event). The plan's last workout should be 1 day before this date."
           }
         },
-        required: ["plan_name", "plan_type", "athlete_level", "total_duration_weeks", "start_date"]
+        required: ["plan_name", "plan_type", "athlete_level", "total_duration_weeks", "start_date", "goal_date"]
       },
       periodization_overview: {
         type: "object",

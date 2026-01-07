@@ -408,20 +408,32 @@ GENERAL RULES FOR PLAN CREATION:
 - Look for the "CURRENT DATE" box in the conversation - it shows THE YEAR!
 - The year is shown as "THE YEAR IS: XXXX" - USE THIS EXACT YEAR!
 - DO NOT use 2023 or 2024 unless the context explicitly says so!
-- start_date in your JSON MUST be in format YYYY-MM-DD with the CORRECT year
+- VALIDATE: All dates must use the year shown in the context (currently 2026!)
+
+**start_date (YYYY-MM-DD):**
 - If user specified a start date, use EXACTLY that date (do NOT adjust it!)
 - If NO start date specified, use EXACTLY "Tomorrow's date" from the context (do NOT round to next Monday!)
 - DO NOT change the start date to align with Monday - use the EXACT date provided/tomorrow
 - VALIDATE: Your start_date MUST be >= today's date from the context
-- VALIDATE: All dates must use the year shown in the context (currently 2025!)
+
+**goal_date (YYYY-MM-DD):**
+- This is the race/event date the user mentioned (e.g., "half marathon on May 24th")
+- Extract the EXACT date the user specified for their race/goal
+- The plan's LAST WORKOUT should occur 1 day BEFORE this goal_date (so they rest on race day)
+- VALIDATE: goal_date MUST be > start_date
+
+**total_duration_weeks:**
+- Calculate: Count the number of calendar weeks from start_date until (goal_date - 1 day)
+- The last week ends on (goal_date - 1 day)
 
 WEEK STRUCTURE - CRITICAL:
 - Every week MUST end on Sunday (weeks are aligned to the calendar)
 - If start_date is NOT a Monday:
   * Week 1 starts on the start_date and ends on the following Sunday (partial week)
-  * Example: If plan starts Wednesday Dec 18, Week 1 = Wed, Thu, Fri, Sat, Sun (5 days)
+  * Example: If plan starts Wednesday Jan 8, Week 1 = Wed, Thu, Fri, Sat, Sun (5 days)
 - From Week 2 onwards: All weeks run Monday to Sunday (7 days each)
-- The LAST week should end 1 day before the goal/race date
+- The LAST week ends on (goal_date - 1 day), which might be a partial week
+  * Example: If goal_date is Saturday May 24, last week ends Friday May 23
 - Each week's "days" array should contain the actual days of that week (5-7 days for week 1, 7 days for other weeks)
 - Use actual day names (Monday, Tuesday, etc.) that match the calendar dates
 
@@ -432,7 +444,7 @@ The system uses structured output - your entire response must be parseable JSON 
 Do NOT write things like "Here's your plan" or explanations - ONLY the JSON object.
 
 The JSON structure includes:
-- meta: plan_name, plan_type, athlete_level, total_duration_weeks, start_date (YYYY-MM-DD format)
+- meta: plan_name, plan_type, athlete_level, total_duration_weeks, start_date (YYYY-MM-DD), goal_date (YYYY-MM-DD)
 - periodization_overview: phases array
 - schedule: array of weeks with days
 

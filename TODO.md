@@ -4,6 +4,10 @@
 <!-- List bugs with clear descriptions and reproduction steps if needed -->
 <!-- Reference screenshots: See: screenshots/filename.png -->
 
+- [ ] the attached plan was supposed to end on may 24th, however plan end date is on may 26th (see /Users/hendrikdiler/Desktop/Cursor Projects/sportMe/screenshots/image copy 10.png). also, the current week is labelled as upcoming, although it is clearly the current week. also, it is now impossible to go to upcoming weeks. (when clicking the forward arrow, you remain in the current week)
+
+- [ ] the attached plan was supposed to begin tomorrow (as a default), but the start date is february 2. (/Users/hendrikdiler/Desktop/Cursor Projects/sportMe/screenshots/image copy 11.png)
+
 - [x] When starting a new training plan chat, the chatbot correctly asks me the first intake question. after replying (e.g., "i want to run a half marathon on may 24. ideally sub 2h"), the intended sequence of messages stopped working - instead i got a lengthy answer and some JSON output that certainly shouldnt be there. - see screenshot /Users/hendrikdiler/Desktop/Cursor Projects/sportMe/screenshots/image.png and /Users/hendrikdiler/Desktop/Cursor Projects/sportMe/screenshots/image copy.png
   - **FIXED**: Added sequence advancement after initial message in `startTrainingPlanFlow()`
 

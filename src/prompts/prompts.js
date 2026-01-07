@@ -326,13 +326,13 @@ USE USER'S ANSWERS FOR:
 - Easy/conversational pace (if they provided it)
 - Weight training details (if they provided it)
 
-FORMAT:
-**Goal:** [from conversation]
-**Plan start date:** [from conversation, or "Tomorrow" if not specified]
-**Current fitness (from Strava):** X km/week, X runs/week, longest run X km, avg pace X min/km
-**Constraints/Injuries:** [from conversation, or "None mentioned"]
-**Schedule:** [from conversation]
-**Assumptions:** [only list things NOT in Strava AND not answered by user]
+FORMAT (use bullet points):
+- **Goal:** [from conversation]
+- **Plan start date:** [from conversation, or "Tomorrow" if not specified]
+- **Current fitness (from Strava):** X km/week, X runs/week, longest run X km, avg pace X min/km
+- **Constraints/Injuries:** [from conversation, or "None mentioned"]
+- **Schedule:** [from conversation]
+- **Assumptions:** [only list things NOT in Strava AND not answered by user]
 
 End with: "Does this look correct? (YES / ADJUST)"
 

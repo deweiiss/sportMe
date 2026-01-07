@@ -21,11 +21,23 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
           console.log('   - workouts:', dayData.workouts?.length || 0);
           console.log('   - segments:', dayData.segments?.length || 0);
           console.log('   - All keys:', Object.keys(dayData).join(', '));
-          
+
           // Try to find segments in various possible fields
-          const segments = dayData.workout_structure || dayData.workouts || dayData.segments || [];
+          let segments = dayData.workout_structure || dayData.workouts || dayData.segments || [];
+
+          // If segments is not an array, try to convert it
+          if (segments && !Array.isArray(segments)) {
+            console.warn('   - Segments is not an array, converting:', typeof segments);
+            segments = [segments];
+          }
+
           console.log('   - Final segments count:', segments.length);
-          
+
+          // If we have very few segments for a run workout, log a warning
+          if (dayData.activity_category === 'RUN' && segments.length < 3) {
+            console.warn(`   ⚠️ RUN workout has only ${segments.length} segments! Expected minimum 3 (WARMUP, MAIN, COOLDOWN)`);
+          }
+
           return {
             ...dayData,
             workout_structure: segments
@@ -55,8 +67,14 @@ export const parseFlattenedTrainingPlan = (flattenedPlan) => {
 
         // Parse workout segments if present
         const rawSegments = parts[7] && parts[7].trim();
-        console.log('📋 Raw segments for', parts[0], ':', rawSegments ? rawSegments.substring(0, 100) : '(empty)');
-        
+        console.log('📋 Raw segments for', parts[0], ':', rawSegments ? rawSegments.substring(0, 150) : '(empty)');
+
+        // Check if || separator is present (expected format)
+        if (rawSegments && !rawSegments.includes('||')) {
+          console.warn('⚠️ Segments missing || separator! Raw:', rawSegments.substring(0, 200));
+          console.warn('   This suggests Gemini is not following the schema format.');
+        }
+
         const workoutSegments = rawSegments
           ? rawSegments.split('||').map(segmentStr => {
               // Format: "SEGMENT_TYPE:description,duration_value duration_unit,Zone intensity_zone"

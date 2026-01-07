@@ -71,7 +71,8 @@ const generatePlanSummary = (plan, isModification = false) => {
   if (plan.periodization_overview?.phases?.length > 0) {
     summary += '\n**Training phases:**\n';
     plan.periodization_overview.phases.forEach(phase => {
-      summary += `- ${phase.phase_name}: ${phase.duration_weeks} weeks\n`;
+      // Phases are stored as strings, not objects
+      summary += `- ${phase}\n`;
     });
   }
   

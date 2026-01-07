@@ -94,24 +94,11 @@ const TrainingPlanView = ({ planData, planId, onPlanUpdate }) => {
     loadMatchData();
   }, [planData, planId]);
 
-  // Auto-update current week when week changes (check daily)
+  // Auto-jump to current week on mount (but allow manual navigation after)
   useEffect(() => {
-    const checkCurrentWeek = () => {
-      const calculatedCurrentWeek = getCurrentWeekIndex();
-      if (calculatedCurrentWeek !== currentWeekIndex) {
-        // Week has changed, auto-jump to current week
-        setCurrentWeekIndex(calculatedCurrentWeek);
-      }
-    };
-
-    // Check immediately on mount
-    checkCurrentWeek();
-
-    // Check every hour for week changes
-    const interval = setInterval(checkCurrentWeek, 60 * 60 * 1000); // 1 hour
-
-    return () => clearInterval(interval);
-  }, [currentWeekIndex, planData]);
+    const calculatedCurrentWeek = getCurrentWeekIndex();
+    setCurrentWeekIndex(calculatedCurrentWeek);
+  }, [planData.meta.start_date]); // Only reset when plan changes, not while browsing
 
   if (!planData || !planData.schedule || planData.schedule.length === 0) {
     return (

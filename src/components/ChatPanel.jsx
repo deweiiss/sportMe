@@ -770,7 +770,7 @@ Note: The system will detect modification requests automatically, but you should
       let finalUserMessage = userMessage;
       let finalSequenceStep = sequenceStep;
 
-      if (planModificationSystemPrompt) {
+      if (planDiscussionSystemPrompt) {
         // Check if this is actually a modification request or just a question
         const isModification = isModificationRequest(userMessage);
 
@@ -793,7 +793,7 @@ Apply this change to the training plan and output the COMPLETE updated plan as J
       
       try {
         // Use custom system prompt for plan modification mode, otherwise use sequence step
-        const systemPromptOverride = planModificationSystemPrompt || null;
+        const systemPromptOverride = planDiscussionSystemPrompt || null;
         assistantResponse = await sendGeminiMessage(messageHistory, finalUserMessage, systemPromptOverride, context, finalSequenceStep);
         console.log('✅ Gemini response received, length:', assistantResponse?.length);
       } catch (geminiError) {
